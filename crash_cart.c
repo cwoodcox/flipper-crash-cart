@@ -44,8 +44,8 @@
 #define NUM_FLIPPER_BUTTONS 6
 #define MENU_OPTIONS_COUNT  2
 
-// How long to keep retrying a key release the host hasn't collected yet
-#define RELEASE_RETRY_MS 250
+// How often to retry a key release the host hasn't collected yet
+#define RELEASE_RETRY_MS 10
 // How long a tapped key (Back's) is held down on the host
 #define TAP_HOLD_MS      50
 
@@ -329,6 +329,8 @@ struct AnkiRemoteApp {
     AppScene current_scene;
     bool running;
     volatile bool connected; // set by the USB HID state callback, possibly from an interrupt
+    bool connection_seen; // last connection state the main loop acted on
+    bool release_pending; // a key release didn't reach the host and must be resent
 
     // Presets
     Preset presets[MAX_PRESETS];
@@ -359,6 +361,7 @@ struct AnkiRemoteApp {
     struct {
         uint8_t selected_item;
         uint8_t scroll_offset;
+        uint8_t pressed_here; // bit per InputKey pressed since the switcher opened
     } profile_switcher_state;
 
     // Controller state (button visuals)
@@ -901,7 +904,7 @@ static void preset_rename_result_cb(void* context) {
 
 // Gets called when USB HID connects or disconnects, and on suspend and wake. It
 // can run in the USB interrupt, so it only records the state and wakes the main
-// loop, which does the LED and redraw.
+// loop, which notices the change in anki_remote_sync_connection.
 static void anki_remote_usb_state_callback(bool state, void* context) {
     AnkiRemoteApp* app = context;
     // The firmware sets the callback and its context separately, so an interrupt
@@ -912,22 +915,42 @@ static void anki_remote_usb_state_callback(bool state, void* context) {
     furi_message_queue_put(app->event_queue, &event, 0);
 }
 
-static void anki_remote_update_connection_led(AnkiRemoteApp* app) {
-    if(app->connected) {
-        furi_hal_light_set(LightBlue, app->led_brightness);
-    } else {
-        furi_hal_light_set(LightBlue, 0); // Off
+// Release every key. The firmware drops a report if the host hasn't collected the
+// previous one within 4 ms (a busy BIOS can be that slow), and a dropped release
+// leaves the key held down on the host, so the main loop retries it.
+static void anki_remote_release_all(AnkiRemoteApp* app) {
+    app->release_pending = !furi_hal_hid_kb_release_all();
+}
+
+// True while a d-pad or OK button is down in the controller. Back never holds a
+// key: its tap presses and releases inside one call.
+static bool anki_remote_key_held(AnkiRemoteApp* app) {
+    return app->current_scene == SceneController &&
+           (app->controller_state.up_pressed || app->controller_state.down_pressed ||
+            app->controller_state.left_pressed || app->controller_state.right_pressed ||
+            app->controller_state.ok_pressed);
+}
+
+// Called from the main loop after every event or retry timeout. Resends a lost
+// release once nothing is held (a held button's own release will do it otherwise).
+static void anki_remote_retry_release(AnkiRemoteApp* app) {
+    if(app->release_pending && app->connected && !anki_remote_key_held(app)) {
+        app->release_pending = !furi_hal_hid_kb_release_all();
     }
 }
 
-// Release every key. The firmware drops a report if the host hasn't collected the
-// previous one within a few ms (a busy BIOS can be that slow), and a dropped
-// release leaves the key held down on the host, so keep trying for a while.
-static void anki_remote_release_all(AnkiRemoteApp* app) {
-    uint32_t start = furi_get_tick();
-    while(!furi_hal_hid_kb_release_all() && app->connected &&
-          furi_get_tick() - start < furi_ms_to_ticks(RELEASE_RETRY_MS)) {
-        furi_delay_ms(1);
+// Called from the main loop after every event, so a dropped state event can't hide
+// a change. On connect, the host may still think a key is down if its release was
+// lost while the bus was suspended, so send a release.
+static void anki_remote_sync_connection(AnkiRemoteApp* app) {
+    bool connected = app->connected;
+    if(connected == app->connection_seen) return;
+    app->connection_seen = connected;
+    if(connected) {
+        furi_hal_light_set(LightBlue, app->led_brightness);
+        app->release_pending = true;
+    } else {
+        furi_hal_light_set(LightBlue, 0); // Off
     }
 }
 
@@ -944,30 +967,36 @@ static void anki_remote_send_key_combo(AnkiRemoteApp* app, KeyMapping mapping, b
          mapping.keycode == HID_KEYBOARD_L_ALT || mapping.keycode == HID_KEYBOARD_L_GUI);
 
     if(is_press) {
+        // Build a single report: modifiers in the high byte, the key in the low byte.
+        // As separate reports, the key could be dropped by a host that's slow to
+        // collect the modifier's report.
+        uint16_t code = 0;
         if(is_pure_modifier) {
             // Press only the modifier
             if(mapping.keycode == HID_KEYBOARD_L_CTRL)
-                furi_hal_hid_kb_press(KEY_MOD_LEFT_CTRL);
+                code = KEY_MOD_LEFT_CTRL;
             else if(mapping.keycode == HID_KEYBOARD_L_SHIFT)
-                furi_hal_hid_kb_press(KEY_MOD_LEFT_SHIFT);
+                code = KEY_MOD_LEFT_SHIFT;
             else if(mapping.keycode == HID_KEYBOARD_L_ALT)
-                furi_hal_hid_kb_press(KEY_MOD_LEFT_ALT);
+                code = KEY_MOD_LEFT_ALT;
             else if(mapping.keycode == HID_KEYBOARD_L_GUI)
-                furi_hal_hid_kb_press(KEY_MOD_LEFT_GUI);
-            return;
-        }
+                code = KEY_MOD_LEFT_GUI;
+        } else {
+            // Regular combo: modifiers...
+            if(mapping.modifiers & MOD_CTRL_BIT) code |= KEY_MOD_LEFT_CTRL;
+            if(mapping.modifiers & MOD_SHIFT_BIT) code |= KEY_MOD_LEFT_SHIFT;
+            if(mapping.modifiers & MOD_ALT_BIT) code |= KEY_MOD_LEFT_ALT;
+            if(mapping.modifiers & MOD_GUI_BIT) code |= KEY_MOD_LEFT_GUI;
 
-        // Regular combo: press modifiers first
-        if(mapping.modifiers & MOD_CTRL_BIT) furi_hal_hid_kb_press(KEY_MOD_LEFT_CTRL);
-        if(mapping.modifiers & MOD_SHIFT_BIT) furi_hal_hid_kb_press(KEY_MOD_LEFT_SHIFT);
-        if(mapping.modifiers & MOD_ALT_BIT) furi_hal_hid_kb_press(KEY_MOD_LEFT_ALT);
-        if(mapping.modifiers & MOD_GUI_BIT) furi_hal_hid_kb_press(KEY_MOD_LEFT_GUI);
-
-        // Then press the main key (skip if the "key" itself is a modifier)
-        if(mapping.keycode != HID_KEYBOARD_L_CTRL && mapping.keycode != HID_KEYBOARD_L_SHIFT &&
-           mapping.keycode != HID_KEYBOARD_L_ALT && mapping.keycode != HID_KEYBOARD_L_GUI) {
-            furi_hal_hid_kb_press(mapping.keycode);
+            // ...plus the main key (skip if the "key" itself is a modifier)
+            if(mapping.keycode != HID_KEYBOARD_L_CTRL && mapping.keycode != HID_KEYBOARD_L_SHIFT &&
+               mapping.keycode != HID_KEYBOARD_L_ALT && mapping.keycode != HID_KEYBOARD_L_GUI) {
+                code |= mapping.keycode;
+            }
         }
+        // A report that got through carries the whole key state, so it also
+        // supersedes any release still waiting to be resent
+        if(furi_hal_hid_kb_press(code)) app->release_pending = false;
     } else {
         // Release all keys.
         anki_remote_release_all(app);
@@ -1122,6 +1151,8 @@ static void anki_remote_scene_controller_input_handler(AnkiRemoteApp* app, Input
     if(event->key == InputKeyBack) {
         if(event->type == InputTypePress || event->type == InputTypeRelease) {
             app->controller_state.back_pressed = (event->type == InputTypePress);
+        } else if(!app->controller_state.back_pressed) {
+            // The press began in another scene (Back held while OK entered this one)
         } else if(event->type == InputTypeLong) {
             anki_remote_set_scene(app, SceneProfileSwitcher);
         } else if(event->type == InputTypeShort) {
@@ -1212,10 +1243,23 @@ static void anki_remote_scene_profile_switcher_draw_callback(Canvas* canvas, voi
     elements_scrollbar(canvas, app->profile_switcher_state.selected_item, app->preset_count);
 }
 
-// Sends no keys. The hold that opened the switcher ends with Back repeat and
-// release events, which land here and are ignored.
+// Sends no keys. Only acts on presses that began here: the Back hold that opened
+// the switcher, or an arrow still held from the controller, goes on sending repeat
+// and release events, which are ignored.
 static void
     anki_remote_scene_profile_switcher_input_handler(AnkiRemoteApp* app, InputEvent* event) {
+    uint8_t key_bit = 1 << event->key;
+    if(event->type == InputTypePress) {
+        app->profile_switcher_state.pressed_here |= key_bit;
+        return;
+    }
+    bool began_here = app->profile_switcher_state.pressed_here & key_bit;
+    if(event->type == InputTypeRelease) {
+        app->profile_switcher_state.pressed_here &= ~key_bit;
+        return;
+    }
+    if(!began_here) return;
+
     if(event->key == InputKeyBack) {
         if(event->type == InputTypeShort || event->type == InputTypeLong) {
             anki_remote_set_scene(app, SceneMenu);
@@ -1822,6 +1866,7 @@ static void anki_remote_set_scene(AnkiRemoteApp* app, AppScene scene) {
         // Start on the live profile
         app->profile_switcher_state.selected_item = app->active_preset;
         app->profile_switcher_state.scroll_offset = 0;
+        app->profile_switcher_state.pressed_here = 0;
         profile_switcher_scroll_to_selection(app);
     }
 
@@ -1927,6 +1972,12 @@ static AnkiRemoteApp* anki_remote_app_alloc() {
 static void anki_remote_app_free(AnkiRemoteApp* app) {
     furi_assert(app);
 
+    // Take the view port down first. The GUI thread delivers input while holding
+    // its lock and blocks if our event queue is full, so removing the view port
+    // after the slow USB mode switch below could deadlock on that lock.
+    view_port_enabled_set(app->view_port, false);
+    gui_remove_view_port(app->gui, app->view_port);
+
     // Release anything still held, stop state callbacks before the app state is
     // freed, then give USB back to whatever mode it was in (usually serial).
     anki_remote_release_all(app);
@@ -1943,8 +1994,6 @@ static void anki_remote_app_free(AnkiRemoteApp* app) {
         app->text_input = NULL;
     }
 
-    view_port_enabled_set(app->view_port, false);
-    gui_remove_view_port(app->gui, app->view_port);
     view_port_free(app->view_port);
     furi_record_close(RECORD_GUI);
     furi_record_close(RECORD_NOTIFICATION);
@@ -1963,13 +2012,17 @@ int32_t crash_cart_app(void* p) {
     AnkiRemoteEvent event;
 
     while(app->running) {
-        if(furi_message_queue_get(app->event_queue, &event, FuriWaitForever) == FuriStatusOk) {
+        // Wake up regularly while a lost key release waits to be resent
+        uint32_t timeout = (app->release_pending && app->connected) ?
+                               furi_ms_to_ticks(RELEASE_RETRY_MS) :
+                               FuriWaitForever;
+        if(furi_message_queue_get(app->event_queue, &event, timeout) == FuriStatusOk) {
             if(event.type == EventTypeInput) {
                 anki_remote_input_handler(app, &event.input);
-            } else if(event.type == EventTypeUsbState) {
-                anki_remote_update_connection_led(app);
             }
         }
+        anki_remote_sync_connection(app);
+        anki_remote_retry_release(app);
         view_port_update(app->view_port);
     }
 
