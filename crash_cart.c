@@ -16,9 +16,6 @@
 #include <storage/storage.h>
 #include <gui/icon_i.h>
 
-#include <bt/bt_service/bt.h>
-#include <extra_profiles/hid_profile.h>
-
 #include <gui/view_dispatcher.h>
 #include <gui/modules/text_input.h>
 
@@ -30,14 +27,13 @@
 
 #define TAG "CrashCart"
 
-#define KEYMAP_PATH  APP_DATA_PATH("keymaps.dat") // Legacy single-mapping file (for migration)
 #define PRESETS_PATH APP_DATA_PATH("presets.dat") // New presets file
 
 #define NUM_FLIPPER_BUTTONS 6
 #define MENU_OPTIONS_COUNT  2
 
-// This is so it can use the same bluetooth keys as other HID apps
-#define HID_BT_KEYS_STORAGE_PATH EXT_PATH("apps_data/hid_ble/.bt_hid.keys")
+// How long to keep retrying a key release the host hasn't collected yet
+#define RELEASE_RETRY_MS 250
 
 // Preset constraints
 #define MAX_PRESETS         12
@@ -79,6 +75,7 @@ typedef enum {
 typedef enum {
     EventTypeInput = 0,
     EventTypeTick, // currently unused but here in case you wanna get fancy later (no one is reading this what am I doing)
+    EventTypeUsbState, // USB HID connected/disconnected; app->connected holds the new state
 } EventType;
 
 typedef struct {
@@ -307,8 +304,7 @@ struct AnkiRemoteApp {
     ViewPort* view_port;
     FuriMessageQueue* event_queue;
     NotificationApp* notifications;
-    Bt* bt;
-    FuriHalBleProfileBase* ble_hid_profile;
+    FuriHalUsbInterface* usb_mode_prev; // USB mode to restore on exit
 
     // Temporary text input (rename)
     ViewDispatcher* view_dispatcher;
@@ -317,7 +313,7 @@ struct AnkiRemoteApp {
     // Global app state
     AppScene current_scene;
     bool running;
-    bool connected;
+    volatile bool connected; // set by the USB HID state callback, possibly from an interrupt
 
     // Presets
     Preset presets[MAX_PRESETS];
@@ -379,7 +375,7 @@ struct AnkiRemoteApp {
 
 static void anki_remote_draw_callback(Canvas* canvas, void* context);
 static void anki_remote_input_callback(InputEvent* input_event, void* context);
-static void anki_remote_connection_status_callback(BtStatus status, void* context);
+static void anki_remote_usb_state_callback(bool state, void* context);
 static void anki_remote_set_scene(AnkiRemoteApp* app, AppScene scene);
 static void anki_remote_send_key_combo(AnkiRemoteApp* app, KeyMapping mapping, bool is_press);
 static const char* get_button_name(FlipperButton button);
@@ -455,8 +451,7 @@ static void anki_remote_save_presets(AnkiRemoteApp* app) {
     furi_record_close(RECORD_STORAGE);
 }
 
-// Migration path from older single-keymap file into presets file.
-// Reads once, converts to preset 0, and saves in new format.
+// Loads the presets file, or seeds and saves the defaults if it's missing or unreadable.
 static bool anki_remote_load_presets(AnkiRemoteApp* app) {
     bool loaded = false;
     Storage* storage = furi_record_open(RECORD_STORAGE);
@@ -476,31 +471,6 @@ static bool anki_remote_load_presets(AnkiRemoteApp* app) {
                 app->presets[i].name[PRESET_NAME_MAX_LEN] = '\0';
             }
             loaded = true;
-        }
-    }
-    storage_file_close(file);
-    storage_file_free(file);
-    furi_record_close(RECORD_STORAGE);
-
-    if(loaded) return true;
-
-    // Fallback: legacy file, turn it into preset 0 and then save to new format.
-    storage = furi_record_open(RECORD_STORAGE);
-    file = storage_file_alloc(storage);
-    if(storage_file_open(file, KEYMAP_PATH, FSAM_READ, FSOM_OPEN_EXISTING)) {
-        KeyMapping legacy_map[NUM_FLIPPER_BUTTONS];
-        uint8_t brightness = 255;
-        if(storage_file_read(file, legacy_map, sizeof(legacy_map)) == sizeof(legacy_map)) {
-            // brightness might be present
-            if(storage_file_read(file, &brightness, sizeof(uint8_t)) != sizeof(uint8_t)) {
-                brightness = 255;
-            }
-            anki_remote_set_default_presets(app);
-            memcpy(app->presets[0].keymap, legacy_map, sizeof(legacy_map));
-            app->led_brightness = brightness;
-            loaded = true;
-            // Save into new format
-            anki_remote_save_presets(app);
         }
     }
     storage_file_close(file);
@@ -877,24 +847,47 @@ static void preset_rename_result_cb(void* context) {
 }
 
 // -----------------------------------------------------------------------------
-// HID / BLE Helpers
+// HID / USB Helpers
 // -----------------------------------------------------------------------------
 
-// Gets called when bluetooth connects or disconnects
-static void anki_remote_connection_status_callback(BtStatus status, void* context) {
-    furi_assert(context);
+// Gets called when USB HID connects or disconnects, and on suspend and wake. It
+// can run in the USB interrupt, so it only records the state and wakes the main
+// loop, which does the LED and redraw.
+static void anki_remote_usb_state_callback(bool state, void* context) {
     AnkiRemoteApp* app = context;
-    app->connected = (status == BtStatusConnected);
+    // The firmware sets the callback and its context separately, so an interrupt
+    // landing in between can see this callback with a stale NULL context.
+    if(app == NULL) return;
+    app->connected = state;
+    AnkiRemoteEvent event = {.type = EventTypeUsbState};
+    furi_message_queue_put(app->event_queue, &event, 0);
+}
+
+static void anki_remote_update_connection_led(AnkiRemoteApp* app) {
     if(app->connected) {
         furi_hal_light_set(LightBlue, app->led_brightness);
     } else {
         furi_hal_light_set(LightBlue, 0); // Off
     }
-    view_port_update(app->view_port);
 }
 
-// Send or release one key combo over BLE HID
+// Release every key. The firmware drops a report if the host hasn't collected the
+// previous one within a few ms (a busy BIOS can be that slow), and a dropped
+// release leaves the key held down on the host, so keep trying for a while.
+static void anki_remote_release_all(AnkiRemoteApp* app) {
+    uint32_t start = furi_get_tick();
+    while(!furi_hal_hid_kb_release_all() && app->connected &&
+          furi_get_tick() - start < furi_ms_to_ticks(RELEASE_RETRY_MS)) {
+        furi_delay_ms(1);
+    }
+}
+
+// Send or release one key combo over USB HID
 static void anki_remote_send_key_combo(AnkiRemoteApp* app, KeyMapping mapping, bool is_press) {
+    // A key pressed while disconnected isn't sent, but it stays in the firmware's
+    // report buffer and goes out with the next report. Only releases go through.
+    if(is_press && !app->connected) return;
+
     // Helper: detect "pure modifier" mapped as a tap
     bool is_pure_modifier =
         (mapping.modifiers == 0) &&
@@ -905,34 +898,30 @@ static void anki_remote_send_key_combo(AnkiRemoteApp* app, KeyMapping mapping, b
         if(is_pure_modifier) {
             // Press only the modifier
             if(mapping.keycode == HID_KEYBOARD_L_CTRL)
-                ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_CTRL);
+                furi_hal_hid_kb_press(KEY_MOD_LEFT_CTRL);
             else if(mapping.keycode == HID_KEYBOARD_L_SHIFT)
-                ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_SHIFT);
+                furi_hal_hid_kb_press(KEY_MOD_LEFT_SHIFT);
             else if(mapping.keycode == HID_KEYBOARD_L_ALT)
-                ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_ALT);
+                furi_hal_hid_kb_press(KEY_MOD_LEFT_ALT);
             else if(mapping.keycode == HID_KEYBOARD_L_GUI)
-                ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_GUI);
+                furi_hal_hid_kb_press(KEY_MOD_LEFT_GUI);
             return;
         }
 
         // Regular combo: press modifiers first
-        if(mapping.modifiers & MOD_CTRL_BIT)
-            ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_CTRL);
-        if(mapping.modifiers & MOD_SHIFT_BIT)
-            ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_SHIFT);
-        if(mapping.modifiers & MOD_ALT_BIT)
-            ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_ALT);
-        if(mapping.modifiers & MOD_GUI_BIT)
-            ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_GUI);
+        if(mapping.modifiers & MOD_CTRL_BIT) furi_hal_hid_kb_press(KEY_MOD_LEFT_CTRL);
+        if(mapping.modifiers & MOD_SHIFT_BIT) furi_hal_hid_kb_press(KEY_MOD_LEFT_SHIFT);
+        if(mapping.modifiers & MOD_ALT_BIT) furi_hal_hid_kb_press(KEY_MOD_LEFT_ALT);
+        if(mapping.modifiers & MOD_GUI_BIT) furi_hal_hid_kb_press(KEY_MOD_LEFT_GUI);
 
         // Then press the main key (skip if the "key" itself is a modifier)
         if(mapping.keycode != HID_KEYBOARD_L_CTRL && mapping.keycode != HID_KEYBOARD_L_SHIFT &&
            mapping.keycode != HID_KEYBOARD_L_ALT && mapping.keycode != HID_KEYBOARD_L_GUI) {
-            ble_profile_hid_kb_press(app->ble_hid_profile, mapping.keycode);
+            furi_hal_hid_kb_press(mapping.keycode);
         }
     } else {
         // Release all keys.
-        ble_profile_hid_kb_release_all(app->ble_hid_profile);
+        anki_remote_release_all(app);
     }
 }
 
@@ -944,7 +933,7 @@ static void anki_remote_scene_menu_draw_callback(Canvas* canvas, void* context) 
     AnkiRemoteApp* app = context;
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str(canvas, 2, 12, "Custom BLE Remote");
+    canvas_draw_str(canvas, 2, 12, "Crash Cart");
     canvas_set_font(canvas, FontSecondary);
     for(uint8_t i = 0; i < MENU_OPTIONS_COUNT; ++i) {
         if(i == app->menu_state.selected_item) {
@@ -956,7 +945,7 @@ static void anki_remote_scene_menu_draw_callback(Canvas* canvas, void* context) 
         canvas_set_color(canvas, ColorBlack);
     }
     elements_multiline_text_aligned(
-        canvas, 64, 62, AlignCenter, AlignBottom, "Created by @blue5gd");
+        canvas, 64, 62, AlignCenter, AlignBottom, "Anki Remote by @blue5gd");
 }
 
 static void anki_remote_scene_menu_input_handler(AnkiRemoteApp* app, InputEvent* event) {
@@ -997,13 +986,12 @@ static void anki_remote_scene_controller_draw_callback(Canvas* canvas, void* con
     AnkiRemoteApp* app = context;
     canvas_clear(canvas);
     if(!app->connected) {
-        // "Waiting for Bluetooth" screen
+        // "Waiting for USB" screen
         canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 2, 10, "BLE Remote");
-        canvas_draw_icon(canvas, 111, 2, &I_Ble_disconnected_15x15);
+        canvas_draw_str(canvas, 2, 10, "USB Keyboard");
         canvas_draw_icon(canvas, 1, 21, &I_WarningDolphin_45x42);
         canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str(canvas, 48, 37, "Awaiting bluetooth");
+        canvas_draw_str(canvas, 48, 37, "Awaiting USB");
     } else {
         // Controller screen
         canvas_draw_icon(canvas, 0, 2, &I_Pin_back_arrow_10x8);
@@ -1672,21 +1660,16 @@ static void anki_remote_set_scene(AnkiRemoteApp* app, AppScene scene) {
     AppScene old_scene = app->current_scene;
     if(old_scene == scene) return;
 
-    // Clean up any scene we are leaving
+    // Clean up any scene we are leaving. USB HID stays up for the whole app, so
+    // a key still held here would never be released.
     if(old_scene == SceneController) {
-        bt_disconnect(app->bt);
-        furi_delay_ms(200);
-        bt_set_status_changed_callback(app->bt, NULL, NULL);
-        furi_check(bt_profile_restore_default(app->bt));
+        anki_remote_release_all(app);
     }
 
     // Initialize new scene if needed
     if(scene == SceneController) {
         memset(&app->controller_state, 0, sizeof(app->controller_state));
-        bt_set_status_changed_callback(app->bt, anki_remote_connection_status_callback, app);
-        app->ble_hid_profile = bt_profile_start(app->bt, ble_profile_hid, NULL);
-        furi_check(app->ble_hid_profile);
-        furi_hal_bt_start_advertising();
+        anki_remote_release_all(app);
     } else if(scene == ScenePresetManager) {
         app->preset_manager_state.selected_item = 0;
         app->preset_manager_state.scroll_offset = 0;
@@ -1770,8 +1753,6 @@ static AnkiRemoteApp* anki_remote_app_alloc() {
     app->event_queue = furi_message_queue_alloc(8, sizeof(AnkiRemoteEvent));
     app->gui = furi_record_open(RECORD_GUI);
     app->notifications = furi_record_open(RECORD_NOTIFICATION);
-    app->bt = furi_record_open(RECORD_BT);
-    bt_keys_storage_set_storage_path(app->bt, HID_BT_KEYS_STORAGE_PATH);
     app->view_port = view_port_alloc();
     view_port_draw_callback_set(app->view_port, anki_remote_draw_callback, app);
     view_port_input_callback_set(app->view_port, anki_remote_input_callback, app->event_queue);
@@ -1787,17 +1768,25 @@ static AnkiRemoteApp* anki_remote_app_alloc() {
     app->active_preset = 0;
     app->highlighted_preset = 0;
     anki_remote_load_presets(app);
+
+    // Be a USB keyboard for as long as the app runs, so moving between scenes
+    // never makes the keyboard disconnect and reconnect on the host.
+    app->usb_mode_prev = furi_hal_usb_get_config();
+    furi_hal_usb_unlock();
+    furi_check(furi_hal_usb_set_config(&usb_hid, NULL) == true);
+    // Fires straight away if the host has already enumerated us
+    furi_hal_hid_set_state_callback(anki_remote_usb_state_callback, app);
     return app;
 }
 
 static void anki_remote_app_free(AnkiRemoteApp* app) {
     furi_assert(app);
-    if(app->current_scene == SceneController) {
-        bt_disconnect(app->bt);
-        furi_delay_ms(200);
-        bt_set_status_changed_callback(app->bt, NULL, NULL);
-        bt_profile_restore_default(app->bt);
-    }
+
+    // Release anything still held, stop state callbacks before the app state is
+    // freed, then give USB back to whatever mode it was in (usually serial).
+    anki_remote_release_all(app);
+    furi_hal_hid_set_state_callback(NULL, NULL);
+    furi_hal_usb_set_config(app->usb_mode_prev, NULL);
 
     // STUPID BUG TOOK 10 BOOBAWAMBA HOURS TO FIGURE OUT
     if(app->view_dispatcher) {
@@ -1815,10 +1804,6 @@ static void anki_remote_app_free(AnkiRemoteApp* app) {
     furi_record_close(RECORD_GUI);
     furi_record_close(RECORD_NOTIFICATION);
 
-    // Reset Bluetooth key storage path to default to not break other apps.
-    bt_keys_storage_set_default_path(app->bt);
-    furi_record_close(RECORD_BT);
-    app->bt = NULL;
     furi_message_queue_free(app->event_queue);
     free(app);
 }
@@ -1836,6 +1821,8 @@ int32_t crash_cart_app(void* p) {
         if(furi_message_queue_get(app->event_queue, &event, FuriWaitForever) == FuriStatusOk) {
             if(event.type == EventTypeInput) {
                 anki_remote_input_handler(app, &event.input);
+            } else if(event.type == EventTypeUsbState) {
+                anki_remote_update_connection_led(app);
             }
         }
         view_port_update(app->view_port);
