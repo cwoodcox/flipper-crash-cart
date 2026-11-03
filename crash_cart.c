@@ -22,13 +22,13 @@
 #include <gui/view_dispatcher.h>
 #include <gui/modules/text_input.h>
 
-#include "anki_remote_icons.h"
+#include "crash_cart_icons.h"
 
 // -----------------------------------------------------------------------------
 // Basic Defines & Paths
 // -----------------------------------------------------------------------------
 
-#define TAG "AnkiRemoteApp"
+#define TAG "CrashCart"
 
 #define KEYMAP_PATH APP_DATA_PATH("keymaps.dat") // Legacy single-mapping file (for migration)
 #define PRESETS_PATH APP_DATA_PATH("presets.dat") // New presets file
@@ -1579,7 +1579,7 @@ static void anki_remote_app_free(AnkiRemoteApp* app) {
 // Entry Point
 // -----------------------------------------------------------------------------
 
-int32_t anki_remote_app(void* p) {
+int32_t crash_cart_app(void* p) {
     UNUSED(p);
     AnkiRemoteApp* app = anki_remote_app_alloc();
     AnkiRemoteEvent event;
