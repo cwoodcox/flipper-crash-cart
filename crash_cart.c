@@ -1,8 +1,8 @@
-// After five long months of waiting... 
-// countless hours of on-and-off coding... 
+// After five long months of waiting...
+// countless hours of on-and-off coding...
 // endless bugs...
 // and too many school nights spent up at 3 A.M. while finishing college apps...
-// The update is finally here. 
+// The update is finally here.
 // I present to you my GREATEST PROJECT AS OF Nov 2025
 // ANKI REMOTE 1.3
 
@@ -30,17 +30,17 @@
 
 #define TAG "CrashCart"
 
-#define KEYMAP_PATH APP_DATA_PATH("keymaps.dat") // Legacy single-mapping file (for migration)
+#define KEYMAP_PATH  APP_DATA_PATH("keymaps.dat") // Legacy single-mapping file (for migration)
 #define PRESETS_PATH APP_DATA_PATH("presets.dat") // New presets file
 
 #define NUM_FLIPPER_BUTTONS 6
-#define MENU_OPTIONS_COUNT 2
+#define MENU_OPTIONS_COUNT  2
 
 // This is so it can use the same bluetooth keys as other HID apps
 #define HID_BT_KEYS_STORAGE_PATH EXT_PATH("apps_data/hid_ble/.bt_hid.keys")
 
 // Preset constraints
-#define MAX_PRESETS 12
+#define MAX_PRESETS         12
 #define PRESET_NAME_MAX_LEN 9 // Character limit for names (fits cleanly on screen)
 
 // Modifier bit flags (internal to our mapping struct)
@@ -54,9 +54,9 @@
 // -----------------------------------------------------------------------------
 
 typedef enum {
-    KeyActionNormal = 0,         // normal key
+    KeyActionNormal = 0, // normal key
     KeyActionToggleModifier = 1, // toggles picker state (Shift/Ctrl/Alt/Cmd)
-    KeyActionTapModifier = 2,    // "tap" mod key mapping (no modifier bitmask)
+    KeyActionTapModifier = 2, // "tap" mod key mapping (no modifier bitmask)
 } KeyAction;
 
 typedef enum {
@@ -105,66 +105,197 @@ typedef struct AnkiRemoteApp AnkiRemoteApp; // Forward declaration
 // -----------------------------------------------------------------------------
 
 typedef struct {
-    uint8_t width;              // key width in keyboard grid units
-    char key;                   // unshifted char
-    char shift_key;             // shifted char
-    const Icon* icon;           // normal icon
-    const Icon* icon_shift;     // icon when shift "pressed"
-    const Icon* icon_toggled;   // icon when this key's toggle state is active
-    uint8_t value;              // HID keycode
-    const char* label;          // small text label (for special/system keys)
-    uint8_t action;             // KeyAction enum
+    uint8_t width; // key width in keyboard grid units
+    char key; // unshifted char
+    char shift_key; // shifted char
+    const Icon* icon; // normal icon
+    const Icon* icon_shift; // icon when shift "pressed"
+    const Icon* icon_toggled; // icon when this key's toggle state is active
+    uint8_t value; // HID keycode
+    const char* label; // small text label (for special/system keys)
+    uint8_t action; // KeyAction enum
 } HidKeyboardKey;
 
-#define KEYBOARD_ROW_COUNT 10
+#define KEYBOARD_ROW_COUNT    10
 #define KEYBOARD_COLUMN_COUNT 12
 
 // If you change this table, U ARE COOKED
 const HidKeyboardKey hid_keyboard_keyset[KEYBOARD_ROW_COUNT][KEYBOARD_COLUMN_COUNT] = {
     // Row 0: F-keys
-    {{.width = 1, .icon = &I_ButtonF1_5x8, .value = HID_KEYBOARD_F1}, {.width = 1, .icon = &I_ButtonF2_5x8, .value = HID_KEYBOARD_F2}, {.width = 1, .icon = &I_ButtonF3_5x8, .value = HID_KEYBOARD_F3}, {.width = 1, .icon = &I_ButtonF4_5x8, .value = HID_KEYBOARD_F4}, {.width = 1, .icon = &I_ButtonF5_5x8, .value = HID_KEYBOARD_F5}, {.width = 1, .icon = &I_ButtonF6_5x8, .value = HID_KEYBOARD_F6}, {.width = 1, .icon = &I_ButtonF7_5x8, .value = HID_KEYBOARD_F7}, {.width = 1, .icon = &I_ButtonF8_5x8, .value = HID_KEYBOARD_F8}, {.width = 1, .icon = &I_ButtonF9_5x8, .value = HID_KEYBOARD_F9}, {.width = 1, .icon = &I_ButtonF10_5x8, .value = HID_KEYBOARD_F10}, {.width = 1, .icon = &I_ButtonF11_5x8, .value = HID_KEYBOARD_F11}, {.width = 1, .icon = &I_ButtonF12_5x8, .value = HID_KEYBOARD_F12}},
+    {{.width = 1, .icon = &I_ButtonF1_5x8, .value = HID_KEYBOARD_F1},
+     {.width = 1, .icon = &I_ButtonF2_5x8, .value = HID_KEYBOARD_F2},
+     {.width = 1, .icon = &I_ButtonF3_5x8, .value = HID_KEYBOARD_F3},
+     {.width = 1, .icon = &I_ButtonF4_5x8, .value = HID_KEYBOARD_F4},
+     {.width = 1, .icon = &I_ButtonF5_5x8, .value = HID_KEYBOARD_F5},
+     {.width = 1, .icon = &I_ButtonF6_5x8, .value = HID_KEYBOARD_F6},
+     {.width = 1, .icon = &I_ButtonF7_5x8, .value = HID_KEYBOARD_F7},
+     {.width = 1, .icon = &I_ButtonF8_5x8, .value = HID_KEYBOARD_F8},
+     {.width = 1, .icon = &I_ButtonF9_5x8, .value = HID_KEYBOARD_F9},
+     {.width = 1, .icon = &I_ButtonF10_5x8, .value = HID_KEYBOARD_F10},
+     {.width = 1, .icon = &I_ButtonF11_5x8, .value = HID_KEYBOARD_F11},
+     {.width = 1, .icon = &I_ButtonF12_5x8, .value = HID_KEYBOARD_F12}},
     // Row 1: Number row
-    {{.width = 1, .key = '1', .shift_key = '!', .value = HID_KEYBOARD_1}, {.width = 1, .key = '2', .shift_key = '@', .value = HID_KEYBOARD_2}, {.width = 1, .icon_shift = &I_hash_button_9x11, .key = '3', .shift_key = '#', .value = HID_KEYBOARD_3}, {.width = 1, .key = '4', .shift_key = '$', .value = HID_KEYBOARD_4}, {.width = 1, .icon_shift = &I_percent_button_9x11, .key = '5', .shift_key = '%', .value = HID_KEYBOARD_5}, {.width = 1, .key = '6', .shift_key = '^', .value = HID_KEYBOARD_6}, {.width = 1, .key = '7', .shift_key = '&', .value = HID_KEYBOARD_7}, {.width = 1, .key = '8', .shift_key = '*', .value = HID_KEYBOARD_8}, {.width = 1, .key = '9', .shift_key = '(', .value = HID_KEYBOARD_9}, {.width = 1, .key = '0', .shift_key = ')', .value = HID_KEYBOARD_0}, {.width = 2, .icon = &I_backspace_19x11, .value = HID_KEYBOARD_DELETE}},
+    {{.width = 1, .key = '1', .shift_key = '!', .value = HID_KEYBOARD_1},
+     {.width = 1, .key = '2', .shift_key = '@', .value = HID_KEYBOARD_2},
+     {.width = 1,
+      .icon_shift = &I_hash_button_9x11,
+      .key = '3',
+      .shift_key = '#',
+      .value = HID_KEYBOARD_3},
+     {.width = 1, .key = '4', .shift_key = '$', .value = HID_KEYBOARD_4},
+     {.width = 1,
+      .icon_shift = &I_percent_button_9x11,
+      .key = '5',
+      .shift_key = '%',
+      .value = HID_KEYBOARD_5},
+     {.width = 1, .key = '6', .shift_key = '^', .value = HID_KEYBOARD_6},
+     {.width = 1, .key = '7', .shift_key = '&', .value = HID_KEYBOARD_7},
+     {.width = 1, .key = '8', .shift_key = '*', .value = HID_KEYBOARD_8},
+     {.width = 1, .key = '9', .shift_key = '(', .value = HID_KEYBOARD_9},
+     {.width = 1, .key = '0', .shift_key = ')', .value = HID_KEYBOARD_0},
+     {.width = 2, .icon = &I_backspace_19x11, .value = HID_KEYBOARD_DELETE}},
     // Row 2: QWERTY
-    {{.width = 1, .key = 'q', .shift_key = 'Q', .value = HID_KEYBOARD_Q}, {.width = 1, .key = 'w', .shift_key = 'W', .value = HID_KEYBOARD_W}, {.width = 1, .key = 'e', .shift_key = 'E', .value = HID_KEYBOARD_E}, {.width = 1, .key = 'r', .shift_key = 'R', .value = HID_KEYBOARD_R}, {.width = 1, .key = 't', .shift_key = 'T', .value = HID_KEYBOARD_T}, {.width = 1, .key = 'y', .shift_key = 'Y', .value = HID_KEYBOARD_Y}, {.width = 1, .key = 'u', .shift_key = 'U', .value = HID_KEYBOARD_U}, {.width = 1, .key = 'i', .shift_key = 'I', .value = HID_KEYBOARD_I}, {.width = 1, .key = 'o', .shift_key = 'O', .value = HID_KEYBOARD_O}, {.width = 1, .key = 'p', .shift_key = 'P', .value = HID_KEYBOARD_P}, {.width = 1, .icon = &I_sq_bracket_left_button_9x11, .icon_shift = &I_brace_left_button_9x11, .value = HID_KEYBOARD_OPEN_BRACKET}, {.width = 1, .icon = &I_sq_bracket_right_button_9x11, .icon_shift = &I_brace_right_button_9x11, .value = HID_KEYBOARD_CLOSE_BRACKET}},
+    {{.width = 1, .key = 'q', .shift_key = 'Q', .value = HID_KEYBOARD_Q},
+     {.width = 1, .key = 'w', .shift_key = 'W', .value = HID_KEYBOARD_W},
+     {.width = 1, .key = 'e', .shift_key = 'E', .value = HID_KEYBOARD_E},
+     {.width = 1, .key = 'r', .shift_key = 'R', .value = HID_KEYBOARD_R},
+     {.width = 1, .key = 't', .shift_key = 'T', .value = HID_KEYBOARD_T},
+     {.width = 1, .key = 'y', .shift_key = 'Y', .value = HID_KEYBOARD_Y},
+     {.width = 1, .key = 'u', .shift_key = 'U', .value = HID_KEYBOARD_U},
+     {.width = 1, .key = 'i', .shift_key = 'I', .value = HID_KEYBOARD_I},
+     {.width = 1, .key = 'o', .shift_key = 'O', .value = HID_KEYBOARD_O},
+     {.width = 1, .key = 'p', .shift_key = 'P', .value = HID_KEYBOARD_P},
+     {.width = 1,
+      .icon = &I_sq_bracket_left_button_9x11,
+      .icon_shift = &I_brace_left_button_9x11,
+      .value = HID_KEYBOARD_OPEN_BRACKET},
+     {.width = 1,
+      .icon = &I_sq_bracket_right_button_9x11,
+      .icon_shift = &I_brace_right_button_9x11,
+      .value = HID_KEYBOARD_CLOSE_BRACKET}},
     // Row 3: ASDF
-    {{.width = 1, .key = 'a', .shift_key = 'A', .value = HID_KEYBOARD_A}, {.width = 1, .key = 's', .shift_key = 'S', .value = HID_KEYBOARD_S}, {.width = 1, .key = 'd', .shift_key = 'D', .value = HID_KEYBOARD_D}, {.width = 1, .key = 'f', .shift_key = 'F', .value = HID_KEYBOARD_F}, {.width = 1, .key = 'g', .shift_key = 'G', .value = HID_KEYBOARD_G}, {.width = 1, .key = 'h', .shift_key = 'H', .value = HID_KEYBOARD_H}, {.width = 1, .key = 'j', .shift_key = 'J', .value = HID_KEYBOARD_J}, {.width = 1, .key = 'k', .shift_key = 'K', .value = HID_KEYBOARD_K}, {.width = 1, .key = 'l', .shift_key = 'L', .value = HID_KEYBOARD_L}, {.width = 1, .key = ';', .shift_key = ':', .value = HID_KEYBOARD_SEMICOLON}, {.width = 2, .icon = &I_Return_10x7, .value = HID_KEYBOARD_RETURN}},
+    {{.width = 1, .key = 'a', .shift_key = 'A', .value = HID_KEYBOARD_A},
+     {.width = 1, .key = 's', .shift_key = 'S', .value = HID_KEYBOARD_S},
+     {.width = 1, .key = 'd', .shift_key = 'D', .value = HID_KEYBOARD_D},
+     {.width = 1, .key = 'f', .shift_key = 'F', .value = HID_KEYBOARD_F},
+     {.width = 1, .key = 'g', .shift_key = 'G', .value = HID_KEYBOARD_G},
+     {.width = 1, .key = 'h', .shift_key = 'H', .value = HID_KEYBOARD_H},
+     {.width = 1, .key = 'j', .shift_key = 'J', .value = HID_KEYBOARD_J},
+     {.width = 1, .key = 'k', .shift_key = 'K', .value = HID_KEYBOARD_K},
+     {.width = 1, .key = 'l', .shift_key = 'L', .value = HID_KEYBOARD_L},
+     {.width = 1, .key = ';', .shift_key = ':', .value = HID_KEYBOARD_SEMICOLON},
+     {.width = 2, .icon = &I_Return_10x7, .value = HID_KEYBOARD_RETURN}},
     // Row 4: ZXCV stuff + arrows
-    {{.width = 1, .key = 'z', .shift_key = 'Z', .value = HID_KEYBOARD_Z}, {.width = 1, .key = 'x', .shift_key = 'X', .value = HID_KEYBOARD_X}, {.width = 1, .key = 'c', .shift_key = 'C', .value = HID_KEYBOARD_C}, {.width = 1, .key = 'v', .shift_key = 'V', .value = HID_KEYBOARD_V}, {.width = 1, .key = 'b', .shift_key = 'B', .value = HID_KEYBOARD_B}, {.width = 1, .key = 'n', .shift_key = 'N', .value = HID_KEYBOARD_N}, {.width = 1, .key = 'm', .shift_key = 'M', .value = HID_KEYBOARD_M}, {.width = 1, .icon = &I_slash_button_9x11, .shift_key = '?', .value = HID_KEYBOARD_SLASH}, {.width = 1, .icon = &I_backslash_button_9x11, .shift_key = '|', .value = HID_KEYBOARD_BACKSLASH}, {.width = 1, .icon = &I_backtick_button_9x11, .shift_key = '~', .value = HID_KEYBOARD_GRAVE_ACCENT}, {.width = 1, .icon = &I_ButtonUp_7x4, .value = HID_KEYBOARD_UP_ARROW}, {.width = 1, .icon_shift = &I_underscore_button_9x11, .key = '-', .shift_key = '_', .value = HID_KEYBOARD_MINUS}},
+    {{.width = 1, .key = 'z', .shift_key = 'Z', .value = HID_KEYBOARD_Z},
+     {.width = 1, .key = 'x', .shift_key = 'X', .value = HID_KEYBOARD_X},
+     {.width = 1, .key = 'c', .shift_key = 'C', .value = HID_KEYBOARD_C},
+     {.width = 1, .key = 'v', .shift_key = 'V', .value = HID_KEYBOARD_V},
+     {.width = 1, .key = 'b', .shift_key = 'B', .value = HID_KEYBOARD_B},
+     {.width = 1, .key = 'n', .shift_key = 'N', .value = HID_KEYBOARD_N},
+     {.width = 1, .key = 'm', .shift_key = 'M', .value = HID_KEYBOARD_M},
+     {.width = 1, .icon = &I_slash_button_9x11, .shift_key = '?', .value = HID_KEYBOARD_SLASH},
+     {.width = 1,
+      .icon = &I_backslash_button_9x11,
+      .shift_key = '|',
+      .value = HID_KEYBOARD_BACKSLASH},
+     {.width = 1,
+      .icon = &I_backtick_button_9x11,
+      .shift_key = '~',
+      .value = HID_KEYBOARD_GRAVE_ACCENT},
+     {.width = 1, .icon = &I_ButtonUp_7x4, .value = HID_KEYBOARD_UP_ARROW},
+     {.width = 1,
+      .icon_shift = &I_underscore_button_9x11,
+      .key = '-',
+      .shift_key = '_',
+      .value = HID_KEYBOARD_MINUS}},
     // Row 5: Bottom symbol row
-    {{.width = 1, .icon = &I_Shift_inactive_7x9, .icon_toggled = &I_Shift_active_7x9, .value = HID_KEYBOARD_L_SHIFT, .action = KeyActionToggleModifier}, {.width = 1, .key = ',', .shift_key = '<', .value = HID_KEYBOARD_COMMA}, {.width = 1, .key = '.', .shift_key = '>', .value = HID_KEYBOARD_DOT}, {.width = 4, .value = HID_KEYBOARD_SPACEBAR}, {.width = 0}, {.width = 0}, {.width = 0},
-    {.width = 1, .key = '\'', .shift_key = '"', .icon = &I_apostrophe_button_9x11, .icon_shift = &I_quote_button_9x11, .value = HID_KEYBOARD_APOSTROPHE},
-    {.width = 1, .icon = &I_equals_button_9x11, .shift_key = '+', .value = HID_KEYBOARD_EQUAL_SIGN}, {.width = 1, .icon = &I_ButtonLeft_4x7, .value = HID_KEYBOARD_LEFT_ARROW}, {.width = 1, .icon = &I_ButtonDown_7x4, .value = HID_KEYBOARD_DOWN_ARROW}, {.width = 1, .icon = &I_ButtonRight_4x7, .value = HID_KEYBOARD_RIGHT_ARROW}},
+    {{.width = 1,
+      .icon = &I_Shift_inactive_7x9,
+      .icon_toggled = &I_Shift_active_7x9,
+      .value = HID_KEYBOARD_L_SHIFT,
+      .action = KeyActionToggleModifier},
+     {.width = 1, .key = ',', .shift_key = '<', .value = HID_KEYBOARD_COMMA},
+     {.width = 1, .key = '.', .shift_key = '>', .value = HID_KEYBOARD_DOT},
+     {.width = 4, .value = HID_KEYBOARD_SPACEBAR},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 1,
+      .key = '\'',
+      .shift_key = '"',
+      .icon = &I_apostrophe_button_9x11,
+      .icon_shift = &I_quote_button_9x11,
+      .value = HID_KEYBOARD_APOSTROPHE},
+     {.width = 1,
+      .icon = &I_equals_button_9x11,
+      .shift_key = '+',
+      .value = HID_KEYBOARD_EQUAL_SIGN},
+     {.width = 1, .icon = &I_ButtonLeft_4x7, .value = HID_KEYBOARD_LEFT_ARROW},
+     {.width = 1, .icon = &I_ButtonDown_7x4, .value = HID_KEYBOARD_DOWN_ARROW},
+     {.width = 1, .icon = &I_ButtonRight_4x7, .value = HID_KEYBOARD_RIGHT_ARROW}},
     // Row 6: Modifier keys row
-    {{.width = 2, .icon = &I_Ctrl_17x10, .icon_toggled = &I_Ctrl_active_17x9, .value = HID_KEYBOARD_L_CTRL, .action = KeyActionToggleModifier}, {.width = 0}, {.width = 2, .icon = &I_Alt_17x10, .icon_toggled = &I_Alt_active_17x9, .value = HID_KEYBOARD_L_ALT, .action = KeyActionToggleModifier}, {.width = 0}, {.width = 2, .icon = &I_Cmd_17x10, .icon_toggled = &I_Cmd_active_17x9, .value = HID_KEYBOARD_L_GUI, .action = KeyActionToggleModifier}, {.width = 0}, {.width = 2, .icon = &I_Tab_17x10, .value = HID_KEYBOARD_TAB}, {.width = 0}, {.width = 2, .icon = &I_Esc_17x10, .value = HID_KEYBOARD_ESCAPE}, {.width = 0}, {.width = 2, .icon = &I_Del_17x10, .value = HID_KEYBOARD_DELETE_FORWARD}},
+    {{.width = 2,
+      .icon = &I_Ctrl_17x10,
+      .icon_toggled = &I_Ctrl_active_17x9,
+      .value = HID_KEYBOARD_L_CTRL,
+      .action = KeyActionToggleModifier},
+     {.width = 0},
+     {.width = 2,
+      .icon = &I_Alt_17x10,
+      .icon_toggled = &I_Alt_active_17x9,
+      .value = HID_KEYBOARD_L_ALT,
+      .action = KeyActionToggleModifier},
+     {.width = 0},
+     {.width = 2,
+      .icon = &I_Cmd_17x10,
+      .icon_toggled = &I_Cmd_active_17x9,
+      .value = HID_KEYBOARD_L_GUI,
+      .action = KeyActionToggleModifier},
+     {.width = 0},
+     {.width = 2, .icon = &I_Tab_17x10, .value = HID_KEYBOARD_TAB},
+     {.width = 0},
+     {.width = 2, .icon = &I_Esc_17x10, .value = HID_KEYBOARD_ESCAPE},
+     {.width = 0},
+     {.width = 2, .icon = &I_Del_17x10, .value = HID_KEYBOARD_DELETE_FORWARD}},
     // Row 7: Navigation row
-    {
-        {.width = 2, .label = "Ins",   .value = HID_KEYBOARD_INSERT},
-        {.width = 2, .label = "Hm",  .value = HID_KEYBOARD_HOME},
-        {.width = 3, .label = "PgUp",   .value = HID_KEYBOARD_PAGE_UP},
-        {.width = 2, .label = "End",   .value = HID_KEYBOARD_END},
-        {.width = 3, .label = "PgDn",  .value = HID_KEYBOARD_PAGE_DOWN},
-        {.width = 0}, {.width = 0}, {.width = 0}, {.width = 0}, {.width = 0}, {.width = 0}, {.width = 0}
-    },
+    {{.width = 2, .label = "Ins", .value = HID_KEYBOARD_INSERT},
+     {.width = 2, .label = "Hm", .value = HID_KEYBOARD_HOME},
+     {.width = 3, .label = "PgUp", .value = HID_KEYBOARD_PAGE_UP},
+     {.width = 2, .label = "End", .value = HID_KEYBOARD_END},
+     {.width = 3, .label = "PgDn", .value = HID_KEYBOARD_PAGE_DOWN},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0}},
     // Row 8: System row
-    {
-        {.width = 3, .label = "PrtSc", .value = HID_KEYBOARD_PRINT_SCREEN},
-        {.width = 3, .label = "ScrL",  .value = HID_KEYBOARD_SCROLL_LOCK},
-        {.width = 3, .label = "PBrk",  .value = HID_KEYBOARD_PAUSE},
-        {.width = 3, .label = "Sel",   .value = HID_KEYBOARD_SELECT},
-        {.width = 0}, {.width = 0}, {.width = 0}, {.width = 0},
-        {.width = 0}, {.width = 0}, {.width = 0}, {.width = 0}
-    },
+    {{.width = 3, .label = "PrtSc", .value = HID_KEYBOARD_PRINT_SCREEN},
+     {.width = 3, .label = "ScrL", .value = HID_KEYBOARD_SCROLL_LOCK},
+     {.width = 3, .label = "PBrk", .value = HID_KEYBOARD_PAUSE},
+     {.width = 3, .label = "Sel", .value = HID_KEYBOARD_SELECT},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0}},
     // Row 9: Modifier taps row
-    {
-        {.width = 3, .label = "Ctrl",  .value = HID_KEYBOARD_L_CTRL,  .action = KeyActionTapModifier},
-        {.width = 3, .label = "Shft",  .value = HID_KEYBOARD_L_SHIFT, .action = KeyActionTapModifier},
-        {.width = 3, .label = "Alt",   .value = HID_KEYBOARD_L_ALT,   .action = KeyActionTapModifier},
-        {.width = 3, .label = "Cmd",   .value = HID_KEYBOARD_L_GUI,   .action = KeyActionTapModifier},
-        {.width = 0}, {.width = 0}, {.width = 0}, {.width = 0},
-        {.width = 0}, {.width = 0}, {.width = 0}, {.width = 0}
-    }
-};
+    {{.width = 3, .label = "Ctrl", .value = HID_KEYBOARD_L_CTRL, .action = KeyActionTapModifier},
+     {.width = 3, .label = "Shft", .value = HID_KEYBOARD_L_SHIFT, .action = KeyActionTapModifier},
+     {.width = 3, .label = "Alt", .value = HID_KEYBOARD_L_ALT, .action = KeyActionTapModifier},
+     {.width = 3, .label = "Cmd", .value = HID_KEYBOARD_L_GUI, .action = KeyActionTapModifier},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0},
+     {.width = 0}}};
 
 // -----------------------------------------------------------------------------
 // App State
@@ -191,9 +322,9 @@ struct AnkiRemoteApp {
     // Presets
     Preset presets[MAX_PRESETS];
     uint8_t preset_count;
-    uint8_t active_preset;      // which preset is live
+    uint8_t active_preset; // which preset is live
     uint8_t highlighted_preset; // which preset row is highlighted in manager
-    uint8_t led_brightness;     // one global LED brightness
+    uint8_t led_brightness; // one global LED brightness
 
     // Menu state
     struct {
@@ -225,7 +356,7 @@ struct AnkiRemoteApp {
 
     // Key picker state
     struct {
-        uint8_t x, y;        // cursor in keyboard grid
+        uint8_t x, y; // cursor in keyboard grid
         bool shift_pressed;
         bool ctrl_pressed;
         bool alt_pressed;
@@ -261,15 +392,15 @@ static void preset_rename_result_cb(void* context);
 // -----------------------------------------------------------------------------
 
 typedef struct {
-    uint32_t magic;        // 'ARPM'
-    uint16_t version;      // 0x0001
+    uint32_t magic; // 'ARPM'
+    uint16_t version; // 0x0001
     uint8_t preset_count;
     uint8_t active_index;
     uint8_t led_brightness;
-    uint8_t reserved[9];   // pad to 16 bytes
+    uint8_t reserved[9]; // pad to 16 bytes
 } PresetFileHeader;
 
-#define PRESET_FILE_MAGIC 0x4152504DUL // 'ARPM'
+#define PRESET_FILE_MAGIC   0x4152504DUL // 'ARPM'
 #define PRESET_FILE_VERSION 0x0001
 
 // -----------------------------------------------------------------------------
@@ -315,7 +446,8 @@ static void anki_remote_save_presets(AnkiRemoteApp* app) {
         // Write presets
         for(uint8_t i = 0; i < app->preset_count; ++i) {
             storage_file_write(file, app->presets[i].name, PRESET_NAME_MAX_LEN + 1);
-            storage_file_write(file, app->presets[i].keymap, sizeof(KeyMapping) * NUM_FLIPPER_BUTTONS);
+            storage_file_write(
+                file, app->presets[i].keymap, sizeof(KeyMapping) * NUM_FLIPPER_BUTTONS);
         }
     }
     storage_file_close(file);
@@ -339,7 +471,8 @@ static bool anki_remote_load_presets(AnkiRemoteApp* app) {
             app->led_brightness = hdr.led_brightness ? hdr.led_brightness : 255;
             for(uint8_t i = 0; i < app->preset_count; ++i) {
                 storage_file_read(file, app->presets[i].name, PRESET_NAME_MAX_LEN + 1);
-                storage_file_read(file, app->presets[i].keymap, sizeof(KeyMapping) * NUM_FLIPPER_BUTTONS);
+                storage_file_read(
+                    file, app->presets[i].keymap, sizeof(KeyMapping) * NUM_FLIPPER_BUTTONS);
                 app->presets[i].name[PRESET_NAME_MAX_LEN] = '\0';
             }
             loaded = true;
@@ -447,49 +580,135 @@ void get_key_combo_name(KeyMapping mapping, char* buffer, size_t buffer_size) {
                     } else {
                         // Map special codes to names
                         switch(key->value) {
-                        case HID_KEYBOARD_UP_ARROW: base_key_name = "Up"; break;
-                        case HID_KEYBOARD_DOWN_ARROW: base_key_name = "Down"; break;
-                        case HID_KEYBOARD_LEFT_ARROW: base_key_name = "Left"; break;
-                        case HID_KEYBOARD_RIGHT_ARROW: base_key_name = "Right"; break;
-                        case HID_KEYBOARD_SPACEBAR: base_key_name = "Space"; break;
-                        case HID_KEYBOARD_RETURN: base_key_name = "Enter"; break;
-                        case HID_KEYBOARD_ESCAPE: base_key_name = "Esc"; break;
-                        case HID_KEYBOARD_DELETE: base_key_name = "Bsp"; break;
-                        case HID_KEYBOARD_DELETE_FORWARD: base_key_name = "Del"; break;
-                        case HID_KEYBOARD_TAB: base_key_name = "Tab"; break;
-                        case HID_KEYBOARD_F1: base_key_name = "F1"; break;
-                        case HID_KEYBOARD_F2: base_key_name = "F2"; break;
-                        case HID_KEYBOARD_F3: base_key_name = "F3"; break;
-                        case HID_KEYBOARD_F4: base_key_name = "F4"; break;
-                        case HID_KEYBOARD_F5: base_key_name = "F5"; break;
-                        case HID_KEYBOARD_F6: base_key_name = "F6"; break;
-                        case HID_KEYBOARD_F7: base_key_name = "F7"; break;
-                        case HID_KEYBOARD_F8: base_key_name = "F8"; break;
-                        case HID_KEYBOARD_F9: base_key_name = "F9"; break;
-                        case HID_KEYBOARD_F10: base_key_name = "F10"; break;
-                        case HID_KEYBOARD_F11: base_key_name = "F11"; break;
-                        case HID_KEYBOARD_F12: base_key_name = "F12"; break;
-                        case HID_KEYBOARD_OPEN_BRACKET: base_key_name = "["; break;
-                        case HID_KEYBOARD_CLOSE_BRACKET: base_key_name = "]"; break;
-                        case HID_KEYBOARD_BACKSLASH: base_key_name = "\\"; break;
-                        case HID_KEYBOARD_SLASH: base_key_name = "/"; break;
-                        case HID_KEYBOARD_APOSTROPHE: base_key_name = "'"; break;
-                        case HID_KEYBOARD_GRAVE_ACCENT: base_key_name = "`"; break;
-                        case HID_KEYBOARD_EQUAL_SIGN: base_key_name = "="; break;
-                        case HID_KEYBOARD_L_SHIFT: base_key_name = "Shift"; break;
-                        case HID_KEYBOARD_L_CTRL: base_key_name = "Ctrl"; break;
-                        case HID_KEYBOARD_L_ALT: base_key_name = "Alt"; break;
-                        case HID_KEYBOARD_L_GUI: base_key_name = "Cmd"; break;
-                        case HID_KEYBOARD_INSERT: base_key_name = "Ins"; break;
-                        case HID_KEYBOARD_HOME: base_key_name = "Home"; break;
-                        case HID_KEYBOARD_PAGE_UP: base_key_name = "PgUp"; break;
-                        case HID_KEYBOARD_END: base_key_name = "End"; break;
-                        case HID_KEYBOARD_PAGE_DOWN: base_key_name = "PgDn"; break;
-                        case HID_KEYBOARD_PRINT_SCREEN: base_key_name = "PrtSc"; break;
-                        case HID_KEYBOARD_SCROLL_LOCK: base_key_name = "ScrLk"; break;
-                        case HID_KEYBOARD_PAUSE: base_key_name = "PBrk"; break;
-                        case HID_KEYBOARD_SELECT: base_key_name = "Select"; break;
-                        default: base_key_name = "Key"; break;
+                        case HID_KEYBOARD_UP_ARROW:
+                            base_key_name = "Up";
+                            break;
+                        case HID_KEYBOARD_DOWN_ARROW:
+                            base_key_name = "Down";
+                            break;
+                        case HID_KEYBOARD_LEFT_ARROW:
+                            base_key_name = "Left";
+                            break;
+                        case HID_KEYBOARD_RIGHT_ARROW:
+                            base_key_name = "Right";
+                            break;
+                        case HID_KEYBOARD_SPACEBAR:
+                            base_key_name = "Space";
+                            break;
+                        case HID_KEYBOARD_RETURN:
+                            base_key_name = "Enter";
+                            break;
+                        case HID_KEYBOARD_ESCAPE:
+                            base_key_name = "Esc";
+                            break;
+                        case HID_KEYBOARD_DELETE:
+                            base_key_name = "Bsp";
+                            break;
+                        case HID_KEYBOARD_DELETE_FORWARD:
+                            base_key_name = "Del";
+                            break;
+                        case HID_KEYBOARD_TAB:
+                            base_key_name = "Tab";
+                            break;
+                        case HID_KEYBOARD_F1:
+                            base_key_name = "F1";
+                            break;
+                        case HID_KEYBOARD_F2:
+                            base_key_name = "F2";
+                            break;
+                        case HID_KEYBOARD_F3:
+                            base_key_name = "F3";
+                            break;
+                        case HID_KEYBOARD_F4:
+                            base_key_name = "F4";
+                            break;
+                        case HID_KEYBOARD_F5:
+                            base_key_name = "F5";
+                            break;
+                        case HID_KEYBOARD_F6:
+                            base_key_name = "F6";
+                            break;
+                        case HID_KEYBOARD_F7:
+                            base_key_name = "F7";
+                            break;
+                        case HID_KEYBOARD_F8:
+                            base_key_name = "F8";
+                            break;
+                        case HID_KEYBOARD_F9:
+                            base_key_name = "F9";
+                            break;
+                        case HID_KEYBOARD_F10:
+                            base_key_name = "F10";
+                            break;
+                        case HID_KEYBOARD_F11:
+                            base_key_name = "F11";
+                            break;
+                        case HID_KEYBOARD_F12:
+                            base_key_name = "F12";
+                            break;
+                        case HID_KEYBOARD_OPEN_BRACKET:
+                            base_key_name = "[";
+                            break;
+                        case HID_KEYBOARD_CLOSE_BRACKET:
+                            base_key_name = "]";
+                            break;
+                        case HID_KEYBOARD_BACKSLASH:
+                            base_key_name = "\\";
+                            break;
+                        case HID_KEYBOARD_SLASH:
+                            base_key_name = "/";
+                            break;
+                        case HID_KEYBOARD_APOSTROPHE:
+                            base_key_name = "'";
+                            break;
+                        case HID_KEYBOARD_GRAVE_ACCENT:
+                            base_key_name = "`";
+                            break;
+                        case HID_KEYBOARD_EQUAL_SIGN:
+                            base_key_name = "=";
+                            break;
+                        case HID_KEYBOARD_L_SHIFT:
+                            base_key_name = "Shift";
+                            break;
+                        case HID_KEYBOARD_L_CTRL:
+                            base_key_name = "Ctrl";
+                            break;
+                        case HID_KEYBOARD_L_ALT:
+                            base_key_name = "Alt";
+                            break;
+                        case HID_KEYBOARD_L_GUI:
+                            base_key_name = "Cmd";
+                            break;
+                        case HID_KEYBOARD_INSERT:
+                            base_key_name = "Ins";
+                            break;
+                        case HID_KEYBOARD_HOME:
+                            base_key_name = "Home";
+                            break;
+                        case HID_KEYBOARD_PAGE_UP:
+                            base_key_name = "PgUp";
+                            break;
+                        case HID_KEYBOARD_END:
+                            base_key_name = "End";
+                            break;
+                        case HID_KEYBOARD_PAGE_DOWN:
+                            base_key_name = "PgDn";
+                            break;
+                        case HID_KEYBOARD_PRINT_SCREEN:
+                            base_key_name = "PrtSc";
+                            break;
+                        case HID_KEYBOARD_SCROLL_LOCK:
+                            base_key_name = "ScrLk";
+                            break;
+                        case HID_KEYBOARD_PAUSE:
+                            base_key_name = "PBrk";
+                            break;
+                        case HID_KEYBOARD_SELECT:
+                            base_key_name = "Select";
+                            break;
+                        default:
+                            base_key_name = "Key";
+                            break;
                         }
                     }
                 }
@@ -504,11 +723,16 @@ void get_key_combo_name(KeyMapping mapping, char* buffer, size_t buffer_size) {
 
 // LED brightness labels
 static const char* get_led_brightness_label(uint8_t brightness) {
-    if(brightness == 0) return "0%";
-    else if(brightness <= 64) return "25%";
-    else if(brightness <= 128) return "50%";
-    else if(brightness <= 192) return "75%";
-    else return "100%";
+    if(brightness == 0)
+        return "0%";
+    else if(brightness <= 64)
+        return "25%";
+    else if(brightness <= 128)
+        return "50%";
+    else if(brightness <= 192)
+        return "75%";
+    else
+        return "100%";
 }
 
 // -----------------------------------------------------------------------------
@@ -520,7 +744,12 @@ static uint8_t preset_manager_total_items(AnkiRemoteApp* app) {
     return app->preset_count + 5;
 }
 
-static void draw_preset_row(Canvas* canvas, const char* name, bool is_active, bool is_selected, uint8_t y_pos) {
+static void draw_preset_row(
+    Canvas* canvas,
+    const char* name,
+    bool is_active,
+    bool is_selected,
+    uint8_t y_pos) {
     if(is_selected) {
         elements_slightly_rounded_box(canvas, 2, y_pos - 7, 124, 9);
         canvas_set_color(canvas, ColorWhite);
@@ -595,18 +824,14 @@ static void start_text_input_for_rename(AnkiRemoteApp* app, uint8_t preset_index
 
     view_dispatcher_attach_to_gui(app->view_dispatcher, app->gui, ViewDispatcherTypeFullscreen);
     view_dispatcher_set_event_callback_context(app->view_dispatcher, app);
-    view_dispatcher_set_navigation_event_callback(app->view_dispatcher, anki_remote_view_dispatcher_navigation_cb);
+    view_dispatcher_set_navigation_event_callback(
+        app->view_dispatcher, anki_remote_view_dispatcher_navigation_cb);
 
     app->text_input = text_input_alloc();
     text_input_set_header_text(app->text_input, "Rename Preset:");
     // Limit to PRESET_NAME_MAX_LEN characters
     text_input_set_result_callback(
-        app->text_input,
-        preset_rename_result_cb,
-        app,
-        app->tmp_name,
-        PRESET_NAME_MAX_LEN,
-        true);
+        app->text_input, preset_rename_result_cb, app, app->tmp_name, PRESET_NAME_MAX_LEN, true);
 
     // Use view id = 0
     view_dispatcher_add_view(app->view_dispatcher, 0, text_input_get_view(app->text_input));
@@ -633,7 +858,7 @@ static void start_text_input_for_rename(AnkiRemoteApp* app, uint8_t preset_index
 static void preset_rename_result_cb(void* context) {
     AnkiRemoteApp* app = context;
     uint8_t idx = app->rename_preset_index; // Use stored index (Fix 2.3 Step 3)
-    
+
     // Ensure index is in range
     if(idx < app->preset_count) {
         // Empty name fallback to default
@@ -673,10 +898,8 @@ static void anki_remote_send_key_combo(AnkiRemoteApp* app, KeyMapping mapping, b
     // Helper: detect "pure modifier" mapped as a tap
     bool is_pure_modifier =
         (mapping.modifiers == 0) &&
-        (mapping.keycode == HID_KEYBOARD_L_CTRL ||
-         mapping.keycode == HID_KEYBOARD_L_SHIFT ||
-         mapping.keycode == HID_KEYBOARD_L_ALT  ||
-         mapping.keycode == HID_KEYBOARD_L_GUI);
+        (mapping.keycode == HID_KEYBOARD_L_CTRL || mapping.keycode == HID_KEYBOARD_L_SHIFT ||
+         mapping.keycode == HID_KEYBOARD_L_ALT || mapping.keycode == HID_KEYBOARD_L_GUI);
 
     if(is_press) {
         if(is_pure_modifier) {
@@ -693,16 +916,18 @@ static void anki_remote_send_key_combo(AnkiRemoteApp* app, KeyMapping mapping, b
         }
 
         // Regular combo: press modifiers first
-        if(mapping.modifiers & MOD_CTRL_BIT)  ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_CTRL);
-        if(mapping.modifiers & MOD_SHIFT_BIT) ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_SHIFT);
-        if(mapping.modifiers & MOD_ALT_BIT)   ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_ALT);
-        if(mapping.modifiers & MOD_GUI_BIT)   ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_GUI);
+        if(mapping.modifiers & MOD_CTRL_BIT)
+            ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_CTRL);
+        if(mapping.modifiers & MOD_SHIFT_BIT)
+            ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_SHIFT);
+        if(mapping.modifiers & MOD_ALT_BIT)
+            ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_ALT);
+        if(mapping.modifiers & MOD_GUI_BIT)
+            ble_profile_hid_kb_press(app->ble_hid_profile, KEY_MOD_LEFT_GUI);
 
         // Then press the main key (skip if the "key" itself is a modifier)
-        if(mapping.keycode != HID_KEYBOARD_L_CTRL &&
-           mapping.keycode != HID_KEYBOARD_L_SHIFT &&
-           mapping.keycode != HID_KEYBOARD_L_ALT  &&
-           mapping.keycode != HID_KEYBOARD_L_GUI) {
+        if(mapping.keycode != HID_KEYBOARD_L_CTRL && mapping.keycode != HID_KEYBOARD_L_SHIFT &&
+           mapping.keycode != HID_KEYBOARD_L_ALT && mapping.keycode != HID_KEYBOARD_L_GUI) {
             ble_profile_hid_kb_press(app->ble_hid_profile, mapping.keycode);
         }
     } else {
@@ -742,8 +967,10 @@ static void anki_remote_scene_menu_input_handler(AnkiRemoteApp* app, InputEvent*
     } else if(event->key == InputKeyDown) {
         app->menu_state.selected_item = (app->menu_state.selected_item + 1) % MENU_OPTIONS_COUNT;
     } else if(event->key == InputKeyOk) {
-        if(app->menu_state.selected_item == 0) anki_remote_set_scene(app, SceneController); // Start
-        else if(app->menu_state.selected_item == 1) anki_remote_set_scene(app, ScenePresetManager); // Manage Presets
+        if(app->menu_state.selected_item == 0)
+            anki_remote_set_scene(app, SceneController); // Start
+        else if(app->menu_state.selected_item == 1)
+            anki_remote_set_scene(app, ScenePresetManager); // Manage Presets
     } else if(event->key == InputKeyBack && event->type == InputTypeShort) {
         app->running = false;
     }
@@ -756,10 +983,14 @@ static void anki_remote_scene_menu_input_handler(AnkiRemoteApp* app, InputEvent*
 // D-pad arrow art: because sometimes you just need triangles.
 static void hid_keynote_draw_arrow(Canvas* canvas, uint8_t x, uint8_t y, CanvasDirection dir) {
     canvas_draw_triangle(canvas, x, y, 5, 3, dir);
-    if(dir == CanvasDirectionBottomToTop) canvas_draw_line(canvas, x, y + 6, x, y - 1);
-    else if(dir == CanvasDirectionTopToBottom) canvas_draw_line(canvas, x, y - 6, x, y + 1);
-    else if(dir == CanvasDirectionRightToLeft) canvas_draw_line(canvas, x + 6, y, x - 1, y);
-    else if(dir == CanvasDirectionLeftToRight) canvas_draw_line(canvas, x - 6, y, x + 1, y);
+    if(dir == CanvasDirectionBottomToTop)
+        canvas_draw_line(canvas, x, y + 6, x, y - 1);
+    else if(dir == CanvasDirectionTopToBottom)
+        canvas_draw_line(canvas, x, y - 6, x, y + 1);
+    else if(dir == CanvasDirectionRightToLeft)
+        canvas_draw_line(canvas, x + 6, y, x - 1, y);
+    else if(dir == CanvasDirectionLeftToRight)
+        canvas_draw_line(canvas, x - 6, y, x + 1, y);
 }
 
 static void anki_remote_scene_controller_draw_callback(Canvas* canvas, void* context) {
@@ -906,7 +1137,7 @@ static void anki_remote_scene_preset_manager_draw_callback(Canvas* canvas, void*
     uint8_t y_spacing = 10;
     // How many rows fit?
     const uint8_t visible_items = ((64 - y_start) / y_spacing) + 1;
-    
+
     for(uint8_t i = 0; i < visible_items; ++i) {
         uint8_t item_index = app->preset_manager_state.scroll_offset + i;
         if(item_index >= total) break;
@@ -954,7 +1185,8 @@ static void anki_remote_scene_preset_manager_draw_callback(Canvas* canvas, void*
                     uint8_t start_x = end_of_label + (available - total_width) / 2 + 1;
                     canvas_draw_str(canvas, start_x, y_pos, "<");
                     canvas_draw_str(canvas, start_x + arrow_width + 1, y_pos, percent_str);
-                    canvas_draw_str(canvas, start_x + arrow_width + 1 + percent_width + 6, y_pos, ">");
+                    canvas_draw_str(
+                        canvas, start_x + arrow_width + 1 + percent_width + 6, y_pos, ">");
                 } else {
                     uint8_t start_x = end_of_label + (available - percent_width) / 2 + 1;
                     canvas_draw_str(canvas, start_x, y_pos, percent_str);
@@ -980,7 +1212,8 @@ static void anki_remote_scene_preset_manager_input_handler(AnkiRemoteApp* app, I
     uint8_t selected_item = app->preset_manager_state.selected_item;
 
     if(event->key == InputKeyUp) {
-        selected_item = (selected_item + total_items - 1) % total_items; // BUG FIX: Corrected calculation for wrap-around
+        selected_item = (selected_item + total_items - 1) %
+                        total_items; // BUG FIX: Corrected calculation for wrap-around
     } else if(event->key == InputKeyDown) {
         selected_item = (selected_item + 1) % total_items;
     } else if(event->key == InputKeyBack) {
@@ -1018,19 +1251,29 @@ static void anki_remote_scene_preset_manager_input_handler(AnkiRemoteApp* app, I
     } else if(selected_item == (app->preset_count + 4)) {
         // LED brightness adjustments
         if(event->key == InputKeyLeft) {
-            if(app->led_brightness == 0) app->led_brightness = 255;
-            else if(app->led_brightness == 64) app->led_brightness = 0;
-            else if(app->led_brightness == 128) app->led_brightness = 64;
-            else if(app->led_brightness == 192) app->led_brightness = 128;
-            else app->led_brightness = 192;
+            if(app->led_brightness == 0)
+                app->led_brightness = 255;
+            else if(app->led_brightness == 64)
+                app->led_brightness = 0;
+            else if(app->led_brightness == 128)
+                app->led_brightness = 64;
+            else if(app->led_brightness == 192)
+                app->led_brightness = 128;
+            else
+                app->led_brightness = 192;
             anki_remote_save_presets(app);
             if(app->connected) furi_hal_light_set(LightBlue, app->led_brightness);
         } else if(event->key == InputKeyRight) {
-            if(app->led_brightness == 0) app->led_brightness = 64;
-            else if(app->led_brightness == 64) app->led_brightness = 128;
-            else if(app->led_brightness == 128) app->led_brightness = 192;
-            else if(app->led_brightness == 192) app->led_brightness = 255;
-            else app->led_brightness = 0;
+            if(app->led_brightness == 0)
+                app->led_brightness = 64;
+            else if(app->led_brightness == 64)
+                app->led_brightness = 128;
+            else if(app->led_brightness == 128)
+                app->led_brightness = 192;
+            else if(app->led_brightness == 192)
+                app->led_brightness = 255;
+            else
+                app->led_brightness = 0;
             anki_remote_save_presets(app);
             if(app->connected) furi_hal_light_set(LightBlue, app->led_brightness);
         }
@@ -1045,7 +1288,7 @@ static void anki_remote_scene_preset_manager_input_handler(AnkiRemoteApp* app, I
     uint8_t y_start = 19;
     uint8_t y_spacing = 10;
     const uint8_t visible_items = ((64 - y_start) / y_spacing) + 1;
-    
+
     if(selected_item < app->preset_manager_state.scroll_offset) {
         app->preset_manager_state.scroll_offset = selected_item;
     } else if(selected_item >= app->preset_manager_state.scroll_offset + visible_items) {
@@ -1070,7 +1313,11 @@ static void anki_remote_scene_preset_edit_menu_draw_callback(Canvas* canvas, voi
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
     char header[40];
-    snprintf(header, sizeof(header), "Edit: %s", app->presets[app->preset_edit_menu_state.editing_preset_index].name);
+    snprintf(
+        header,
+        sizeof(header),
+        "Edit: %s",
+        app->presets[app->preset_edit_menu_state.editing_preset_index].name);
     canvas_draw_str(canvas, 2, 10, header);
     canvas_set_font(canvas, FontSecondary);
 
@@ -1090,7 +1337,10 @@ static void anki_remote_scene_preset_edit_menu_draw_callback(Canvas* canvas, voi
 
         if(item_index < NUM_FLIPPER_BUTTONS) {
             char key_name_buffer[24];
-            get_key_combo_name(app->presets[app->preset_edit_menu_state.editing_preset_index].keymap[item_index], key_name_buffer, sizeof(key_name_buffer));
+            get_key_combo_name(
+                app->presets[app->preset_edit_menu_state.editing_preset_index].keymap[item_index],
+                key_name_buffer,
+                sizeof(key_name_buffer));
             snprintf(label, sizeof(label), "%s: %s", get_button_name(item_index), key_name_buffer);
         } else {
             strlcpy(label, "Reset Mappings", sizeof(label));
@@ -1108,7 +1358,8 @@ static void anki_remote_scene_preset_edit_menu_draw_callback(Canvas* canvas, voi
     elements_scrollbar(canvas, app->preset_edit_menu_state.selected_item, total_items);
 }
 
-static void anki_remote_scene_preset_edit_menu_input_handler(AnkiRemoteApp* app, InputEvent* event) {
+static void
+    anki_remote_scene_preset_edit_menu_input_handler(AnkiRemoteApp* app, InputEvent* event) {
     if(app->ignore_next_ok_release && event->key == InputKeyOk &&
        (event->type == InputTypeShort || event->type == InputTypeRelease)) {
         app->ignore_next_ok_release = false;
@@ -1120,7 +1371,8 @@ static void anki_remote_scene_preset_edit_menu_input_handler(AnkiRemoteApp* app,
     uint8_t selected_item = app->preset_edit_menu_state.selected_item;
 
     if(event->key == InputKeyUp) {
-        selected_item = (selected_item + total_items - 1) % total_items; // BUG FIX: Corrected calculation for wrap-around
+        selected_item = (selected_item + total_items - 1) %
+                        total_items; // BUG FIX: Corrected calculation for wrap-around
     } else if(event->key == InputKeyDown) {
         selected_item = (selected_item + 1) % total_items;
     } else if(event->key == InputKeyBack) {
@@ -1128,11 +1380,13 @@ static void anki_remote_scene_preset_edit_menu_input_handler(AnkiRemoteApp* app,
     } else if(event->key == InputKeyOk) {
         if(selected_item < NUM_FLIPPER_BUTTONS) {
             app->settings_state.configuring_button = selected_item;
-            app->settings_state.editing_preset_index = app->preset_edit_menu_state.editing_preset_index;
+            app->settings_state.editing_preset_index =
+                app->preset_edit_menu_state.editing_preset_index;
             anki_remote_set_scene(app, SceneKeyPicker);
         } else {
             // Reset only mappings (not brightness)
-            anki_remote_reset_keymap_only_for_preset(&app->presets[app->preset_edit_menu_state.editing_preset_index]);
+            anki_remote_reset_keymap_only_for_preset(
+                &app->presets[app->preset_edit_menu_state.editing_preset_index]);
             anki_remote_save_presets(app);
         }
     } else if(event->key == InputKeyBack) {
@@ -1143,7 +1397,7 @@ static void anki_remote_scene_preset_edit_menu_input_handler(AnkiRemoteApp* app,
     uint8_t y_start = 19;
     uint8_t y_spacing = 10;
     const uint8_t visible_items = ((64 - y_start) / y_spacing) + 1;
-    
+
     if(selected_item < app->preset_edit_menu_state.scroll_offset) {
         app->preset_edit_menu_state.scroll_offset = selected_item;
     } else if(selected_item >= app->preset_edit_menu_state.scroll_offset + visible_items) {
@@ -1165,10 +1419,10 @@ static void hid_keyboard_draw_key(
     bool selected,
     const struct AnkiRemoteApp* app) {
     if(!key->width) return;
-#define MARGIN_TOP 12
+#define MARGIN_TOP  12
 #define MARGIN_LEFT 3
-#define KEY_WIDTH 11
-#define KEY_HEIGHT 13
+#define KEY_WIDTH   11
+#define KEY_HEIGHT  13
 #define KEY_PADDING -1
     canvas_set_color(canvas, ColorBlack);
     uint8_t key_width = KEY_WIDTH * key->width + KEY_PADDING * (key->width - 1);
@@ -1182,11 +1436,10 @@ static void hid_keyboard_draw_key(
         elements_slightly_rounded_frame(canvas, px, py, key_width, KEY_HEIGHT);
     }
     bool shift = app->settings_state.shift_pressed;
-    bool is_toggled =
-        (key->value == HID_KEYBOARD_L_SHIFT && app->settings_state.shift_pressed) ||
-        (key->value == HID_KEYBOARD_L_CTRL && app->settings_state.ctrl_pressed) ||
-        (key->value == HID_KEYBOARD_L_ALT && app->settings_state.alt_pressed) ||
-        (key->value == HID_KEYBOARD_L_GUI && app->settings_state.gui_pressed);
+    bool is_toggled = (key->value == HID_KEYBOARD_L_SHIFT && app->settings_state.shift_pressed) ||
+                      (key->value == HID_KEYBOARD_L_CTRL && app->settings_state.ctrl_pressed) ||
+                      (key->value == HID_KEYBOARD_L_ALT && app->settings_state.alt_pressed) ||
+                      (key->value == HID_KEYBOARD_L_GUI && app->settings_state.gui_pressed);
     // toggled icon?
     if(is_toggled && key->icon_toggled) {
         const Icon* icon = key->icon_toggled;
@@ -1309,8 +1562,7 @@ static void settings_move_cursor(AnkiRemoteApp* app, int8_t dx, int8_t dy) {
     // In case we land on a zero-width void, try left then right until it works.
     if(hid_keyboard_keyset[current_y][current_x].width == 0) {
         int temp_x = current_x;
-        while(temp_x >= 0 &&
-              hid_keyboard_keyset[current_y][temp_x].width == 0) {
+        while(temp_x >= 0 && hid_keyboard_keyset[current_y][temp_x].width == 0) {
             temp_x--;
         }
 
@@ -1322,8 +1574,7 @@ static void settings_move_cursor(AnkiRemoteApp* app, int8_t dx, int8_t dy) {
                   hid_keyboard_keyset[current_y][temp_x].width == 0) {
                 temp_x++;
             }
-            if(temp_x < KEYBOARD_COLUMN_COUNT)
-                current_x = temp_x;
+            if(temp_x < KEYBOARD_COLUMN_COUNT) current_x = temp_x;
         }
     }
     app->settings_state.x = (uint8_t)current_x;
@@ -1361,15 +1612,12 @@ static void anki_remote_scene_keypicker_input_handler(AnkiRemoteApp* app, InputE
     }
 
     // OK pressed: get the selected key
-    const HidKeyboardKey* sel =
-            &hid_keyboard_keyset[app->settings_state.y][app->settings_state.x];
+    const HidKeyboardKey* sel = &hid_keyboard_keyset[app->settings_state.y][app->settings_state.x];
     uint8_t selected_keycode = sel->value;
 
     bool treat_as_toggle =
-        (sel->action == KeyActionToggleModifier) ||
-        (selected_keycode == HID_KEYBOARD_L_SHIFT) ||
-        (selected_keycode == HID_KEYBOARD_L_CTRL) ||
-        (selected_keycode == HID_KEYBOARD_L_ALT) ||
+        (sel->action == KeyActionToggleModifier) || (selected_keycode == HID_KEYBOARD_L_SHIFT) ||
+        (selected_keycode == HID_KEYBOARD_L_CTRL) || (selected_keycode == HID_KEYBOARD_L_ALT) ||
         (selected_keycode == HID_KEYBOARD_L_GUI);
 
     // "Tap" modifier: maps directly as its own keycode (no bitmask)
@@ -1403,9 +1651,9 @@ static void anki_remote_scene_keypicker_input_handler(AnkiRemoteApp* app, InputE
     new_mapping.keycode = selected_keycode;
     new_mapping.modifiers = 0;
     if(app->settings_state.shift_pressed) new_mapping.modifiers |= MOD_SHIFT_BIT;
-    if(app->settings_state.ctrl_pressed)  new_mapping.modifiers |= MOD_CTRL_BIT;
-    if(app->settings_state.alt_pressed)   new_mapping.modifiers |= MOD_ALT_BIT;
-    if(app->settings_state.gui_pressed)   new_mapping.modifiers |= MOD_GUI_BIT;
+    if(app->settings_state.ctrl_pressed) new_mapping.modifiers |= MOD_CTRL_BIT;
+    if(app->settings_state.alt_pressed) new_mapping.modifiers |= MOD_ALT_BIT;
+    if(app->settings_state.gui_pressed) new_mapping.modifiers |= MOD_GUI_BIT;
 
     app->presets[app->settings_state.editing_preset_index]
         .keymap[app->settings_state.configuring_button] = new_mapping;
