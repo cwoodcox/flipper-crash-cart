@@ -44,7 +44,7 @@
 #define NUM_FLIPPER_BUTTONS 6
 #define MENU_OPTIONS_COUNT  2
 
-// How often to retry a key release the host hasn't collected yet
+// How often to resend a key report the host hasn't collected yet
 #define RELEASE_RETRY_MS 10
 // How long a tapped key (Back's) is held down on the host
 #define TAP_HOLD_MS      50
@@ -330,7 +330,7 @@ struct AnkiRemoteApp {
     bool running;
     volatile bool connected; // set by the USB HID state callback, possibly from an interrupt
     bool connection_seen; // last connection state the main loop acted on
-    bool release_pending; // a key release didn't reach the host and must be resent
+    bool report_pending; // the last key report didn't reach the host and must be resent
 
     // Presets
     Preset presets[MAX_PRESETS];
@@ -916,39 +916,32 @@ static void anki_remote_usb_state_callback(bool state, void* context) {
 }
 
 // Release every key. The firmware drops a report if the host hasn't collected the
-// previous one within 4 ms (a busy BIOS can be that slow), and a dropped release
-// leaves the key held down on the host, so the main loop retries it.
+// previous one within 4 ms (a busy BIOS can be that slow). A dropped release would
+// leave the key held down on the host, so the main loop resends the report.
 static void anki_remote_release_all(AnkiRemoteApp* app) {
-    app->release_pending = !furi_hal_hid_kb_release_all();
+    app->report_pending = !furi_hal_hid_kb_release_all();
 }
 
-// True while a d-pad or OK button is down in the controller. Back never holds a
-// key: its tap presses and releases inside one call.
-static bool anki_remote_key_held(AnkiRemoteApp* app) {
-    return app->current_scene == SceneController &&
-           (app->controller_state.up_pressed || app->controller_state.down_pressed ||
-            app->controller_state.left_pressed || app->controller_state.right_pressed ||
-            app->controller_state.ok_pressed);
-}
-
-// Called from the main loop after every event or retry timeout. Resends a lost
-// release once nothing is held (a held button's own release will do it otherwise).
-static void anki_remote_retry_release(AnkiRemoteApp* app) {
-    if(app->release_pending && app->connected && !anki_remote_key_held(app)) {
-        app->release_pending = !furi_hal_hid_kb_release_all();
+// Called from the main loop after every event or retry timeout. Resends the
+// current key state if the last report didn't get through, so the host ends up
+// with exactly the keys that are held now. Pressing key 0 changes nothing in the
+// report, it just sends it again.
+static void anki_remote_resend_report(AnkiRemoteApp* app) {
+    if(app->report_pending && app->connected) {
+        app->report_pending = !furi_hal_hid_kb_press(0);
     }
 }
 
 // Called from the main loop after every event, so a dropped state event can't hide
-// a change. On connect, the host may still think a key is down if its release was
-// lost while the bus was suspended, so send a release.
+// a change. On connect, the host may still have a key down whose release was lost
+// while the bus was suspended, so resend the current key state.
 static void anki_remote_sync_connection(AnkiRemoteApp* app) {
     bool connected = app->connected;
     if(connected == app->connection_seen) return;
     app->connection_seen = connected;
     if(connected) {
         furi_hal_light_set(LightBlue, app->led_brightness);
-        app->release_pending = true;
+        app->report_pending = true;
     } else {
         furi_hal_light_set(LightBlue, 0); // Off
     }
@@ -994,9 +987,9 @@ static void anki_remote_send_key_combo(AnkiRemoteApp* app, KeyMapping mapping, b
                 code |= mapping.keycode;
             }
         }
-        // A report that got through carries the whole key state, so it also
-        // supersedes any release still waiting to be resent
-        if(furi_hal_hid_kb_press(code)) app->release_pending = false;
+        // Every report carries the whole key state, so this one also stands in for
+        // any earlier report still waiting to be resent
+        app->report_pending = !furi_hal_hid_kb_press(code);
     } else {
         // Release all keys.
         anki_remote_release_all(app);
@@ -1974,8 +1967,12 @@ static void anki_remote_app_free(AnkiRemoteApp* app) {
 
     // Take the view port down first. The GUI thread delivers input while holding
     // its lock and blocks if our event queue is full, so removing the view port
-    // after the slow USB mode switch below could deadlock on that lock.
+    // after the slow USB mode switch below could deadlock on that lock. Empty the
+    // queue too, in case the GUI thread is already blocked on it.
     view_port_enabled_set(app->view_port, false);
+    AnkiRemoteEvent event;
+    while(furi_message_queue_get(app->event_queue, &event, 0) == FuriStatusOk) {
+    }
     gui_remove_view_port(app->gui, app->view_port);
 
     // Release anything still held, stop state callbacks before the app state is
@@ -2012,8 +2009,8 @@ int32_t crash_cart_app(void* p) {
     AnkiRemoteEvent event;
 
     while(app->running) {
-        // Wake up regularly while a lost key release waits to be resent
-        uint32_t timeout = (app->release_pending && app->connected) ?
+        // Wake up regularly while a lost key report waits to be resent
+        uint32_t timeout = (app->report_pending && app->connected) ?
                                furi_ms_to_ticks(RELEASE_RETRY_MS) :
                                FuriWaitForever;
         if(furi_message_queue_get(app->event_queue, &event, timeout) == FuriStatusOk) {
@@ -2022,7 +2019,7 @@ int32_t crash_cart_app(void* p) {
             }
         }
         anki_remote_sync_connection(app);
-        anki_remote_retry_release(app);
+        anki_remote_resend_report(app);
         view_port_update(app->view_port);
     }
 
