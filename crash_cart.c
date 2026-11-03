@@ -34,6 +34,8 @@
 
 // How long to keep retrying a key release the host hasn't collected yet
 #define RELEASE_RETRY_MS 250
+// How long a tapped key (Back's) is held down on the host
+#define TAP_HOLD_MS      50
 
 // Preset constraints
 #define MAX_PRESETS         12
@@ -70,6 +72,7 @@ typedef enum {
     ScenePresetManager,
     ScenePresetEditMenu,
     SceneKeyPicker,
+    SceneProfileSwitcher,
 } AppScene;
 
 typedef enum {
@@ -339,6 +342,12 @@ struct AnkiRemoteApp {
         uint8_t scroll_offset;
         uint8_t editing_preset_index;
     } preset_edit_menu_state;
+
+    // Profile switcher state
+    struct {
+        uint8_t selected_item;
+        uint8_t scroll_offset;
+    } profile_switcher_state;
 
     // Controller state (button visuals)
     struct {
@@ -714,6 +723,14 @@ static uint8_t preset_manager_total_items(AnkiRemoteApp* app) {
     return app->preset_count + 5;
 }
 
+// Draws a string in the current font, cut short with "..." if it's wider than max_width
+static void draw_str_fit(Canvas* canvas, uint8_t x, uint8_t y, const char* str, size_t max_width) {
+    FuriString* fitted = furi_string_alloc_set(str);
+    elements_string_fit_width(canvas, fitted, max_width);
+    canvas_draw_str(canvas, x, y, furi_string_get_cstr(fitted));
+    furi_string_free(fitted);
+}
+
 static void draw_preset_row(
     Canvas* canvas,
     const char* name,
@@ -925,6 +942,15 @@ static void anki_remote_send_key_combo(AnkiRemoteApp* app, KeyMapping mapping, b
     }
 }
 
+// Press and release a key combo in one go. Back only knows it was tapped once the
+// button comes back up, so hold the key briefly for hosts that poll slowly.
+static void anki_remote_tap_key_combo(AnkiRemoteApp* app, KeyMapping mapping) {
+    if(mapping.keycode == 0) return;
+    anki_remote_send_key_combo(app, mapping, true);
+    furi_delay_ms(TAP_HOLD_MS);
+    anki_remote_send_key_combo(app, mapping, false);
+}
+
 // -----------------------------------------------------------------------------
 // Scene Drawing: Menu
 // -----------------------------------------------------------------------------
@@ -985,23 +1011,19 @@ static void hid_keynote_draw_arrow(Canvas* canvas, uint8_t x, uint8_t y, CanvasD
 static void anki_remote_scene_controller_draw_callback(Canvas* canvas, void* context) {
     AnkiRemoteApp* app = context;
     canvas_clear(canvas);
+    // Active profile as the header, so it's always clear which keys are live
+    canvas_set_font(canvas, FontPrimary);
+    draw_str_fit(canvas, 2, 10, app->presets[app->active_preset].name, 124);
     if(!app->connected) {
         // "Waiting for USB" screen
-        canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 2, 10, "USB Keyboard");
         canvas_draw_icon(canvas, 1, 21, &I_WarningDolphin_45x42);
         canvas_set_font(canvas, FontSecondary);
         canvas_draw_str(canvas, 48, 37, "Awaiting USB");
     } else {
         // Controller screen
-        canvas_draw_icon(canvas, 0, 2, &I_Pin_back_arrow_10x8);
-        canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 17, 10, "Hold to exit");
-        // Show active preset name in top-right
+        canvas_draw_icon(canvas, 2, 13, &I_Pin_back_arrow_10x8);
         canvas_set_font(canvas, FontSecondary);
-        char title_buf[32];
-        snprintf(title_buf, sizeof(title_buf), "[%s]", app->presets[app->active_preset].name);
-        elements_multiline_text_aligned(canvas, 127, 3, AlignRight, AlignTop, title_buf);
+        canvas_draw_str(canvas, 15, 20, "Hold: profiles");
 
         // D-Pad Up
         canvas_draw_icon(canvas, 21, 24, &I_Button_18x18);
@@ -1062,12 +1084,23 @@ static void anki_remote_scene_controller_draw_callback(Canvas* canvas, void* con
 }
 
 static void anki_remote_scene_controller_input_handler(AnkiRemoteApp* app, InputEvent* event) {
-    // Back: long press to exit; short press is mapped if connected
+    // Back sends nothing on press or release, since a hold isn't recognised until
+    // after the press. A tap sends its key (or leaves for the menu while
+    // disconnected) and a hold opens the profile switcher.
     if(event->key == InputKeyBack) {
-        if(event->type == InputTypeLong || (!app->connected && event->type == InputTypeShort)) {
-            anki_remote_set_scene(app, SceneMenu);
-            return;
+        if(event->type == InputTypePress || event->type == InputTypeRelease) {
+            app->controller_state.back_pressed = (event->type == InputTypePress);
+        } else if(event->type == InputTypeLong) {
+            anki_remote_set_scene(app, SceneProfileSwitcher);
+        } else if(event->type == InputTypeShort) {
+            if(!app->connected) {
+                anki_remote_set_scene(app, SceneMenu);
+            } else {
+                anki_remote_tap_key_combo(
+                    app, app->presets[app->active_preset].keymap[FlipperButtonBack]);
+            }
         }
+        return;
     }
     bool is_press = (event->type == InputTypePress);
     bool is_release = (event->type == InputTypeRelease);
@@ -1095,10 +1128,6 @@ static void anki_remote_scene_controller_input_handler(AnkiRemoteApp* app, Input
             app->controller_state.ok_pressed = is_press;
             mapping = app->presets[app->active_preset].keymap[FlipperButtonOk];
             break;
-        case InputKeyBack:
-            app->controller_state.back_pressed = is_press;
-            mapping = app->presets[app->active_preset].keymap[FlipperButtonBack];
-            break;
         default:
             key_event = false;
             break;
@@ -1107,6 +1136,79 @@ static void anki_remote_scene_controller_input_handler(AnkiRemoteApp* app, Input
             anki_remote_send_key_combo(app, mapping, is_press);
         }
     }
+}
+
+// -----------------------------------------------------------------------------
+// Scene Drawing: Profile Switcher (hold Back in the controller)
+// -----------------------------------------------------------------------------
+
+static void profile_switcher_scroll_to_selection(AnkiRemoteApp* app) {
+    uint8_t y_start = 19;
+    uint8_t y_spacing = 10;
+    const uint8_t visible_items = ((64 - y_start) / y_spacing) + 1;
+    uint8_t selected_item = app->profile_switcher_state.selected_item;
+
+    if(selected_item < app->profile_switcher_state.scroll_offset) {
+        app->profile_switcher_state.scroll_offset = selected_item;
+    } else if(selected_item >= app->profile_switcher_state.scroll_offset + visible_items) {
+        app->profile_switcher_state.scroll_offset = selected_item - visible_items + 1;
+    }
+}
+
+static void anki_remote_scene_profile_switcher_draw_callback(Canvas* canvas, void* context) {
+    AnkiRemoteApp* app = context;
+    canvas_clear(canvas);
+    canvas_set_font(canvas, FontPrimary);
+    canvas_draw_str(canvas, 2, 10, "Switch Profile");
+    canvas_set_font(canvas, FontSecondary);
+
+    uint8_t y_start = 19;
+    uint8_t y_spacing = 10;
+    const uint8_t visible_items = ((64 - y_start) / y_spacing) + 1;
+
+    for(uint8_t i = 0; i < visible_items; ++i) {
+        uint8_t item_index = app->profile_switcher_state.scroll_offset + i;
+        if(item_index >= app->preset_count) break;
+        draw_preset_row(
+            canvas,
+            app->presets[item_index].name,
+            item_index == app->active_preset,
+            item_index == app->profile_switcher_state.selected_item,
+            y_start + (i * y_spacing));
+    }
+
+    elements_scrollbar(canvas, app->profile_switcher_state.selected_item, app->preset_count);
+}
+
+// Sends no keys. The hold that opened the switcher ends with Back repeat and
+// release events, which land here and are ignored.
+static void
+    anki_remote_scene_profile_switcher_input_handler(AnkiRemoteApp* app, InputEvent* event) {
+    if(event->key == InputKeyBack) {
+        if(event->type == InputTypeShort || event->type == InputTypeLong) {
+            anki_remote_set_scene(app, SceneMenu);
+        }
+        return;
+    }
+    if(event->type != InputTypeShort && event->type != InputTypeRepeat) return;
+
+    uint8_t selected_item = app->profile_switcher_state.selected_item;
+    if(event->key == InputKeyUp) {
+        selected_item = (selected_item + app->preset_count - 1) % app->preset_count;
+    } else if(event->key == InputKeyDown) {
+        selected_item = (selected_item + 1) % app->preset_count;
+    } else if(event->key == InputKeyOk && event->type == InputTypeShort) {
+        // Make the highlighted profile live and remember it for next launch
+        if(selected_item != app->active_preset) {
+            app->active_preset = selected_item;
+            anki_remote_save_presets(app);
+        }
+        anki_remote_set_scene(app, SceneController);
+        return;
+    }
+
+    app->profile_switcher_state.selected_item = selected_item;
+    profile_switcher_scroll_to_selection(app);
 }
 
 // -----------------------------------------------------------------------------
@@ -1684,6 +1786,11 @@ static void anki_remote_set_scene(AnkiRemoteApp* app, AppScene scene) {
         app->settings_state.ctrl_pressed = false;
         app->settings_state.alt_pressed = false;
         app->settings_state.gui_pressed = false;
+    } else if(scene == SceneProfileSwitcher) {
+        // Start on the live profile
+        app->profile_switcher_state.selected_item = app->active_preset;
+        app->profile_switcher_state.scroll_offset = 0;
+        profile_switcher_scroll_to_selection(app);
     }
 
     app->current_scene = scene;
@@ -1712,6 +1819,9 @@ static void anki_remote_draw_callback(Canvas* canvas, void* context) {
     case SceneKeyPicker:
         anki_remote_scene_keypicker_draw_callback(canvas, app);
         break;
+    case SceneProfileSwitcher:
+        anki_remote_scene_profile_switcher_draw_callback(canvas, app);
+        break;
     }
 }
 
@@ -1731,6 +1841,9 @@ static void anki_remote_input_handler(AnkiRemoteApp* app, InputEvent* event) {
         break;
     case SceneKeyPicker:
         anki_remote_scene_keypicker_input_handler(app, event);
+        break;
+    case SceneProfileSwitcher:
+        anki_remote_scene_profile_switcher_input_handler(app, event);
         break;
     }
 }
