@@ -1062,6 +1062,77 @@ static void hid_keynote_draw_arrow(Canvas* canvas, uint8_t x, uint8_t y, CanvasD
         canvas_draw_line(canvas, x - 6, y, x + 1, y);
 }
 
+// The icon the key picker draws for a key (F-keys, Enter, symbols...), if any
+static const Icon* keyset_icon(uint8_t keycode) {
+    for(uint8_t y = 0; y < KEYBOARD_ROW_COUNT; ++y) {
+        for(uint8_t x = 0; x < KEYBOARD_COLUMN_COUNT; ++x) {
+            const HidKeyboardKey* key = &hid_keyboard_keyset[y][x];
+            if(key->width && key->value == keycode) return key->icon;
+        }
+    }
+    return NULL;
+}
+
+// A d-pad button in the native Remote app's style, showing the key it sends:
+// arrow keys as arrows, keys with a small key-picker icon (F-keys, Enter) as
+// that icon, anything else as text cut to fit the 13x13 face.
+static void draw_dpad_key(Canvas* canvas, uint8_t x, uint8_t y, KeyMapping mapping, bool pressed) {
+    canvas_draw_icon(canvas, x, y, &I_Button_18x18);
+    if(pressed) {
+        elements_slightly_rounded_box(canvas, x + 3, y + 2, 13, 13);
+        canvas_set_color(canvas, ColorWhite);
+    }
+
+    uint8_t cx = x + 9; // centre of the button face
+    uint8_t cy = y + 8;
+    const Icon* icon = (mapping.modifiers == 0) ? keyset_icon(mapping.keycode) : NULL;
+    if(mapping.keycode == 0) {
+        // Not mapped: leave the button blank
+    } else if(mapping.modifiers == 0 && mapping.keycode == HID_KEYBOARD_UP_ARROW) {
+        hid_keynote_draw_arrow(canvas, cx, cy - 2, CanvasDirectionBottomToTop);
+    } else if(mapping.modifiers == 0 && mapping.keycode == HID_KEYBOARD_DOWN_ARROW) {
+        hid_keynote_draw_arrow(canvas, cx, cy + 2, CanvasDirectionTopToBottom);
+    } else if(mapping.modifiers == 0 && mapping.keycode == HID_KEYBOARD_LEFT_ARROW) {
+        hid_keynote_draw_arrow(canvas, cx - 2, cy, CanvasDirectionRightToLeft);
+    } else if(mapping.modifiers == 0 && mapping.keycode == HID_KEYBOARD_RIGHT_ARROW) {
+        hid_keynote_draw_arrow(canvas, cx + 2, cy, CanvasDirectionLeftToRight);
+    } else if(icon && icon_get_width(icon) <= 11 && icon_get_height(icon) <= 11) {
+        canvas_draw_icon(
+            canvas, cx - icon_get_width(icon) / 2, cy - icon_get_height(icon) / 2, icon);
+    } else {
+        char name[32];
+        get_key_combo_name(mapping, name, sizeof(name));
+        FuriString* label = furi_string_alloc_set(name);
+        elements_string_fit_width(canvas, label, 13);
+        canvas_draw_str_aligned(
+            canvas, cx + 1, cy + 3, AlignCenter, AlignBottom, furi_string_get_cstr(label));
+        furi_string_free(label);
+    }
+    canvas_set_color(canvas, ColorBlack);
+}
+
+// A wide button in the native Remote app's style: the Flipper button's icon, then
+// the key it sends
+static void
+    draw_wide_key(Canvas* canvas, uint8_t y, const Icon* button, KeyMapping mapping, bool pressed) {
+    canvas_draw_icon(canvas, 63, y, &I_Space_65x18);
+    if(pressed) {
+        elements_slightly_rounded_box(canvas, 66, y + 2, 60, 13);
+        canvas_set_color(canvas, ColorWhite);
+    }
+    canvas_draw_icon(canvas, 74, y + 4, button);
+    if(mapping.keycode != 0) {
+        char name[32];
+        get_key_combo_name(mapping, name, sizeof(name));
+        FuriString* label = furi_string_alloc_set(name);
+        elements_string_fit_width(canvas, label, 33);
+        canvas_draw_str_aligned(
+            canvas, 91, y + 12, AlignLeft, AlignBottom, furi_string_get_cstr(label));
+        furi_string_free(label);
+    }
+    canvas_set_color(canvas, ColorBlack);
+}
+
 static void anki_remote_scene_controller_draw_callback(Canvas* canvas, void* context) {
     AnkiRemoteApp* app = context;
     canvas_clear(canvas);
@@ -1079,61 +1150,23 @@ static void anki_remote_scene_controller_draw_callback(Canvas* canvas, void* con
         canvas_set_font(canvas, FontSecondary);
         canvas_draw_str(canvas, 15, 20, "Hold: profiles");
 
-        // D-Pad Up
-        canvas_draw_icon(canvas, 21, 24, &I_Button_18x18);
-        if(app->controller_state.up_pressed) {
-            elements_slightly_rounded_box(canvas, 24, 26, 13, 13);
-            canvas_set_color(canvas, ColorWhite);
-        }
-        hid_keynote_draw_arrow(canvas, 30, 30, CanvasDirectionBottomToTop);
-        canvas_set_color(canvas, ColorBlack);
-
-        // D-Pad Down
-        canvas_draw_icon(canvas, 21, 45, &I_Button_18x18);
-        if(app->controller_state.down_pressed) {
-            elements_slightly_rounded_box(canvas, 24, 47, 13, 13);
-            canvas_set_color(canvas, ColorWhite);
-        }
-        hid_keynote_draw_arrow(canvas, 30, 55, CanvasDirectionTopToBottom);
-        canvas_set_color(canvas, ColorBlack);
-
-        // D-Pad Left
-        canvas_draw_icon(canvas, 0, 45, &I_Button_18x18);
-        if(app->controller_state.left_pressed) {
-            elements_slightly_rounded_box(canvas, 3, 47, 13, 13);
-            canvas_set_color(canvas, ColorWhite);
-        }
-        hid_keynote_draw_arrow(canvas, 7, 53, CanvasDirectionRightToLeft);
-        canvas_set_color(canvas, ColorBlack);
-
-        // D-Pad Right
-        canvas_draw_icon(canvas, 42, 45, &I_Button_18x18);
-        if(app->controller_state.right_pressed) {
-            elements_slightly_rounded_box(canvas, 45, 47, 13, 13);
-            canvas_set_color(canvas, ColorWhite);
-        }
-        hid_keynote_draw_arrow(canvas, 53, 53, CanvasDirectionLeftToRight);
-        canvas_set_color(canvas, ColorBlack);
-
-        // OK row
-        canvas_draw_icon(canvas, 63, 24, &I_Space_65x18);
-        if(app->controller_state.ok_pressed) {
-            elements_slightly_rounded_box(canvas, 66, 26, 60, 13);
-            canvas_set_color(canvas, ColorWhite);
-        }
-        canvas_draw_icon(canvas, 74, 28, &I_Ok_btn_9x9);
-        elements_multiline_text_aligned(canvas, 91, 36, AlignLeft, AlignBottom, "OK");
-        canvas_set_color(canvas, ColorBlack);
-
-        // Back row
-        canvas_draw_icon(canvas, 63, 45, &I_Space_65x18);
-        if(app->controller_state.back_pressed) {
-            elements_slightly_rounded_box(canvas, 66, 47, 60, 13);
-            canvas_set_color(canvas, ColorWhite);
-        }
-        canvas_draw_icon(canvas, 74, 49, &I_Pin_back_arrow_10x8);
-        elements_multiline_text_aligned(canvas, 91, 57, AlignLeft, AlignBottom, "Back");
-        canvas_set_color(canvas, ColorBlack);
+        // The native Remote app's layout, with each button showing the key it sends
+        const KeyMapping* keymap = app->presets[app->active_preset].keymap;
+        draw_dpad_key(canvas, 21, 24, keymap[FlipperButtonUp], app->controller_state.up_pressed);
+        draw_dpad_key(
+            canvas, 21, 45, keymap[FlipperButtonDown], app->controller_state.down_pressed);
+        draw_dpad_key(
+            canvas, 0, 45, keymap[FlipperButtonLeft], app->controller_state.left_pressed);
+        draw_dpad_key(
+            canvas, 42, 45, keymap[FlipperButtonRight], app->controller_state.right_pressed);
+        draw_wide_key(
+            canvas, 24, &I_Ok_btn_9x9, keymap[FlipperButtonOk], app->controller_state.ok_pressed);
+        draw_wide_key(
+            canvas,
+            45,
+            &I_Pin_back_arrow_10x8,
+            keymap[FlipperButtonBack],
+            app->controller_state.back_pressed);
     }
 }
 
