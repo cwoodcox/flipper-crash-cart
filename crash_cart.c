@@ -39,7 +39,7 @@
 
 // Preset constraints
 #define MAX_PRESETS         12
-#define PRESET_NAME_MAX_LEN 9 // Character limit for names (fits cleanly on screen)
+#define PRESET_NAME_MAX_LEN 16 // Character limit for names (room for machine names)
 
 // Modifier bit flags (internal to our mapping struct)
 #define MOD_CTRL_BIT  (1 << 0)
@@ -398,7 +398,7 @@ static void preset_rename_result_cb(void* context);
 
 typedef struct {
     uint32_t magic; // 'ARPM'
-    uint16_t version; // 0x0001
+    uint16_t version; // PRESET_FILE_VERSION
     uint8_t preset_count;
     uint8_t active_index;
     uint8_t led_brightness;
@@ -406,7 +406,7 @@ typedef struct {
 } PresetFileHeader;
 
 #define PRESET_FILE_MAGIC   0x4152504DUL // 'ARPM'
-#define PRESET_FILE_VERSION 0x0001
+#define PRESET_FILE_VERSION 0x0002 // 2: names grew from 9 to 16 characters
 
 // -----------------------------------------------------------------------------
 // Small Helpers
@@ -422,7 +422,7 @@ static void preset_init_empty(Preset* p, const char* name) {
     if(name) {
         strlcpy(p->name, name, sizeof(p->name));
     } else {
-        strlcpy(p->name, "Preset", sizeof(p->name));
+        strlcpy(p->name, "Profile", sizeof(p->name));
     }
     for(uint8_t i = 0; i < NUM_FLIPPER_BUTTONS; ++i) {
         keymap_clear(&p->keymap[i]);
@@ -430,10 +430,30 @@ static void preset_init_empty(Preset* p, const char* name) {
 }
 
 static void anki_remote_set_default_presets(AnkiRemoteApp* app) {
-    app->preset_count = 1;
+    app->preset_count = 2;
     app->active_preset = 0;
     app->led_brightness = 255;
-    preset_init_empty(&app->presets[0], "Default");
+
+    // POST hotkeys, the same across recent Dell PowerEdge generations
+    Preset* dell = &app->presets[0];
+    preset_init_empty(dell, "Dell POST");
+    dell->keymap[FlipperButtonLeft] = (KeyMapping){.keycode = HID_KEYBOARD_F1}; // continue
+    dell->keymap[FlipperButtonUp] = (KeyMapping){.keycode = HID_KEYBOARD_F2}; // System Setup
+    dell->keymap[FlipperButtonOk] = (KeyMapping){.keycode = HID_KEYBOARD_F10}; // Lifecycle Ctrl
+    dell->keymap[FlipperButtonRight] = (KeyMapping){.keycode = HID_KEYBOARD_F11}; // Boot Manager
+    dell->keymap[FlipperButtonDown] = (KeyMapping){.keycode = HID_KEYBOARD_F12}; // PXE boot
+    dell->keymap[FlipperButtonBack] = // PERC RAID utility
+        (KeyMapping){.keycode = HID_KEYBOARD_R, .modifiers = MOD_CTRL_BIT};
+
+    // Moving around any setup menu
+    Preset* nav = &app->presets[1];
+    preset_init_empty(nav, "Navigate");
+    nav->keymap[FlipperButtonUp] = (KeyMapping){.keycode = HID_KEYBOARD_UP_ARROW};
+    nav->keymap[FlipperButtonDown] = (KeyMapping){.keycode = HID_KEYBOARD_DOWN_ARROW};
+    nav->keymap[FlipperButtonLeft] = (KeyMapping){.keycode = HID_KEYBOARD_LEFT_ARROW};
+    nav->keymap[FlipperButtonRight] = (KeyMapping){.keycode = HID_KEYBOARD_RIGHT_ARROW};
+    nav->keymap[FlipperButtonOk] = (KeyMapping){.keycode = HID_KEYBOARD_RETURN};
+    nav->keymap[FlipperButtonBack] = (KeyMapping){.keycode = HID_KEYBOARD_ESCAPE};
 }
 
 // We save everything in one file
@@ -743,7 +763,7 @@ static void draw_preset_row(
     }
     char line[40];
     snprintf(line, sizeof(line), "%c %s", is_active ? '*' : ' ', name);
-    canvas_draw_str(canvas, 5, y_pos, line);
+    draw_str_fit(canvas, 5, y_pos, line, 117); // clear of the scrollbar
     canvas_set_color(canvas, ColorBlack);
 }
 
@@ -779,7 +799,7 @@ static void delete_preset_by_index(AnkiRemoteApp* app, uint8_t idx) {
 static void create_new_preset(AnkiRemoteApp* app) {
     if(app->preset_count >= MAX_PRESETS) return;
     char tmp_name[32];
-    snprintf(tmp_name, sizeof(tmp_name), "Preset %u", (unsigned)(app->preset_count + 1));
+    snprintf(tmp_name, sizeof(tmp_name), "Profile %u", (unsigned)(app->preset_count + 1));
     preset_init_empty(&app->presets[app->preset_count], tmp_name);
     app->preset_count++;
     anki_remote_save_presets(app);
@@ -815,10 +835,10 @@ static void start_text_input_for_rename(AnkiRemoteApp* app, uint8_t preset_index
         app->view_dispatcher, anki_remote_view_dispatcher_navigation_cb);
 
     app->text_input = text_input_alloc();
-    text_input_set_header_text(app->text_input, "Rename Preset:");
-    // Limit to PRESET_NAME_MAX_LEN characters
+    text_input_set_header_text(app->text_input, "Rename Profile:");
+    // Limit to PRESET_NAME_MAX_LEN characters (the size passed includes the terminator)
     text_input_set_result_callback(
-        app->text_input, preset_rename_result_cb, app, app->tmp_name, PRESET_NAME_MAX_LEN, true);
+        app->text_input, preset_rename_result_cb, app, app->tmp_name, sizeof(app->tmp_name), true);
 
     // Use view id = 0
     view_dispatcher_add_view(app->view_dispatcher, 0, text_input_get_view(app->text_input));
@@ -850,7 +870,7 @@ static void preset_rename_result_cb(void* context) {
     if(idx < app->preset_count) {
         // Empty name fallback to default
         if(app->tmp_name[0] == '\0') {
-            strlcpy(app->tmp_name, "Preset", sizeof(app->tmp_name));
+            strlcpy(app->tmp_name, "Profile", sizeof(app->tmp_name));
         }
         strlcpy(app->presets[idx].name, app->tmp_name, PRESET_NAME_MAX_LEN + 1);
         anki_remote_save_presets(app);
@@ -967,7 +987,7 @@ static void anki_remote_scene_menu_draw_callback(Canvas* canvas, void* context) 
             canvas_set_color(canvas, ColorWhite);
         }
         if(i == 0) canvas_draw_str(canvas, 15, 33, "Start");
-        if(i == 1) canvas_draw_str(canvas, 15, 48, "Manage Presets");
+        if(i == 1) canvas_draw_str(canvas, 15, 48, "Manage Profiles");
         canvas_set_color(canvas, ColorBlack);
     }
     elements_multiline_text_aligned(
@@ -1219,7 +1239,7 @@ static void anki_remote_scene_preset_manager_draw_callback(Canvas* canvas, void*
     AnkiRemoteApp* app = context;
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str(canvas, 2, 10, "Manage Presets");
+    canvas_draw_str(canvas, 2, 10, "Manage Profiles");
     canvas_set_font(canvas, FontSecondary);
 
     uint8_t total = preset_manager_total_items(app);
@@ -1255,7 +1275,7 @@ static void anki_remote_scene_preset_manager_draw_callback(Canvas* canvas, void*
                     canvas_draw_str(canvas, 5, y_pos, "Delete Selected");
                 }
             } else if(item_index == app->preset_count + 3) {
-                canvas_draw_str(canvas, 5, y_pos, "Create Preset");
+                canvas_draw_str(canvas, 5, y_pos, "Create Profile");
             } else if(item_index == app->preset_count + 4) {
                 // LED brightness line
                 const char* percent_str = get_led_brightness_label(app->led_brightness);
@@ -1408,7 +1428,7 @@ static void anki_remote_scene_preset_edit_menu_draw_callback(Canvas* canvas, voi
         sizeof(header),
         "Edit: %s",
         app->presets[app->preset_edit_menu_state.editing_preset_index].name);
-    canvas_draw_str(canvas, 2, 10, header);
+    draw_str_fit(canvas, 2, 10, header, 120); // clear of the scrollbar
     canvas_set_font(canvas, FontSecondary);
 
     const uint8_t total_items = NUM_FLIPPER_BUTTONS + 1; // 6 buttons + Reset
@@ -1613,7 +1633,7 @@ static void anki_remote_scene_keypicker_draw_callback(Canvas* canvas, void* cont
         "Set key for %s (%s)",
         get_button_name(app->settings_state.configuring_button),
         app->presets[app->settings_state.editing_preset_index].name);
-    canvas_draw_str(canvas, 2, 10, header_str);
+    draw_str_fit(canvas, 2, 10, header_str, 120); // clear of the scrollbar
     canvas_set_font(canvas, FontKeyboard);
     uint8_t start_row = (app->settings_state.y > 3) ? (app->settings_state.y - 3) : 0;
     for(uint8_t y = start_row; y < KEYBOARD_ROW_COUNT; y++) {
