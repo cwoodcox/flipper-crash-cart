@@ -1,0 +1,134 @@
+<!doctype html>
+<!--
+  Crash Cart key test. Open this file in a browser, click into the page, and
+  press the Flipper's buttons. Every keydown/keyup is logged with event.code and
+  the modifier state; auto-repeat is collapsed into a count on the keydown row;
+  "Held now" lists keys that went down and haven't come back up (a stuck key).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crash Cart Key Test</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #e5e5ea;
+    --down: #0a7d28; --up: #8a5a00; --warn-bg: #fff2f0; --warn-fg: #b3261e; --ok: #0a7d28;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161618; --fg: #f2f2f7; --muted: #98989f; --line: #2c2c2e;
+      --down: #4cd471; --up: #ffb84d; --warn-bg: #3a1714; --warn-fg: #ff8a80; --ok: #4cd471;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+         font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--muted); max-width: 70ch; }
+  .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+  #held { padding: 6px 10px; border-radius: 6px; font-weight: 600; }
+  #held.ok { color: var(--ok); }
+  #held.stuck { background: var(--warn-bg); color: var(--warn-fg); }
+  #focus { color: var(--warn-fg); font-weight: 600; }
+  button { font: inherit; padding: 4px 10px; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; }
+  .keydown { color: var(--down); }
+  .keyup { color: var(--up); }
+  .mod-on { font-weight: 700; }
+  .mod-off { color: var(--muted); }
+</style>
+</head>
+<body>
+<h1>Crash Cart key test</h1>
+<p>Click here so the page has focus, then press the Flipper's buttons. macOS keeps some
+F-keys for itself (F11 is Show Desktop), so a missing F-key isn't a bug in itself.</p>
+<div class="bar">
+  <span id="held" class="ok">Held now: nothing</span>
+  <span id="focus" hidden>Page lost focus: key events may be missing</span>
+  <button id="clear" type="button">Clear log</button>
+</div>
+<div class="scroll">
+  <table>
+    <thead><tr><th>time</th><th>event</th><th>code</th><th>key</th><th>ctrl</th><th>shift</th><th>alt</th><th>meta</th><th>repeats</th><th>held for</th></tr></thead>
+    <tbody id="log"></tbody>
+  </table>
+</div>
+<script>
+  const log = document.getElementById("log");
+  const heldEl = document.getElementById("held");
+  const focusEl = document.getElementById("focus");
+  const held = new Map(); // code -> {time, row}
+  const start = performance.now();
+
+  function updateHeld() {
+    if (held.size === 0) {
+      heldEl.textContent = "Held now: nothing";
+      heldEl.className = "ok";
+    } else {
+      heldEl.textContent = "Held now: " + [...held.keys()].join(", ");
+      heldEl.className = "stuck";
+    }
+  }
+
+  function cell(row, text, cls) {
+    const td = row.insertCell();
+    td.textContent = text;
+    if (cls) td.className = cls;
+    return td;
+  }
+
+  function mod(row, on) { cell(row, on ? "yes" : "-", on ? "mod-on" : "mod-off"); }
+
+  function addRow(e) {
+    const row = log.insertRow(0);
+    cell(row, ((e.timeStamp - start) / 1000).toFixed(3));
+    cell(row, e.type, e.type);
+    cell(row, e.code);
+    cell(row, e.key === " " ? "Space" : e.key);
+    mod(row, e.ctrlKey); mod(row, e.shiftKey); mod(row, e.altKey); mod(row, e.metaKey);
+    row.repeatCell = cell(row, "");
+    row.heldCell = cell(row, "");
+    return row;
+  }
+
+  window.addEventListener("keydown", (e) => {
+    e.preventDefault(); // stop the browser acting on F-keys, arrows, Ctrl+R...
+    const prev = held.get(e.code);
+    if (e.repeat && prev) {
+      prev.repeats += 1;
+      prev.row.repeatCell.textContent = String(prev.repeats);
+      return;
+    }
+    held.set(e.code, { time: e.timeStamp, row: addRow(e), repeats: 0 });
+    updateHeld();
+  });
+
+  window.addEventListener("keyup", (e) => {
+    e.preventDefault();
+    const row = addRow(e);
+    const down = held.get(e.code);
+    if (down) {
+      row.heldCell.textContent = Math.round(e.timeStamp - down.time) + " ms";
+      held.delete(e.code);
+    } else {
+      row.heldCell.textContent = "no keydown seen";
+    }
+    updateHeld();
+  });
+
+  window.addEventListener("blur", () => { focusEl.hidden = false; });
+  window.addEventListener("focus", () => { focusEl.hidden = true; });
+
+  document.getElementById("clear").addEventListener("click", (e) => {
+    log.textContent = "";
+    held.clear();
+    updateHeld();
+    e.currentTarget.blur();
+  });
+</script>
+</body>
+</html>

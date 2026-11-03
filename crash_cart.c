@@ -1,3 +1,15 @@
+// Crash Cart: a USB key remote for Flipper Zero.
+//
+// A USB port of Anki Remote by Blue5GD (https://github.com/Blue5GD/Anki-Remote),
+// from upstream commit a47c09b8f8693f7a1e6e5046cec78dbd6050c65b. Modified from
+// 2026-11-02: Bluetooth LE replaced with USB HID, Back tap/hold with a profile
+// switcher, longer profile names and new default profiles.
+//
+// Like Anki Remote, it is licensed under the GNU General Public License v3.0.
+// See LICENSE.
+//
+// Anki Remote's original header follows.
+//
 // After five long months of waiting...
 // countless hours of on-and-off coding...
 // endless bugs...
