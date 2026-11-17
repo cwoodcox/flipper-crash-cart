@@ -75,7 +75,10 @@ Profiles are saved to `/ext/apps_data/crash_cart/presets.dat` on the SD card.
 
 Crash Cart is built with [ufbt](https://github.com/flipperdevices/flipperzero-ufbt)
 against the SDK that matches the firmware on your Flipper; a mismatch makes the
-app refuse to launch. For official release firmware:
+app refuse to launch. **err_06** (Outdated App) means it was built for older
+firmware than the Flipper has, and **err_07** (Outdated Firmware) means newer.
+After updating the Flipper, run `ufbt update` again and reinstall. For official
+release firmware:
 
 ```sh
 pipx install ufbt          # or: uv tool install ufbt
